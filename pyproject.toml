@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "blacklight-cli"
+version = "0.1.0"
+description = "Network vulnerability scanner: nmap service detection + NVD CVE matching with EPSS/KEV enrichment"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+keywords = ["security", "vulnerability", "nmap", "cve", "nvd", "scanning"]
+dependencies = [
+    "typer>=0.12",
+    "rich>=13.7",
+    "jinja2>=3.1",
+    "requests>=2.31",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.scripts]
+blacklight = "blacklight.cli:app"
+
+[tool.setuptools]
+packages = ["blacklight"]
+
+[tool.setuptools.package-data]
+blacklight = ["templates/*.j2"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
