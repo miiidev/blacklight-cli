@@ -1,3 +1,4 @@
+import requests
 from typer.testing import CliRunner
 
 from blacklight.cli import app, run_scan
@@ -107,3 +108,19 @@ def test_scan_reports_missing_nmap(monkeypatch, tmp_path):
     assert result.exit_code == 1
     assert "nmap not found" in result.output
     assert "apt install nmap" in result.output
+
+
+def test_scan_fails_gracefully_on_upstream_error(monkeypatch, tmp_path):
+    def boom(*args, **kwargs):
+        raise requests.ConnectionError("unable to reach nvd.nist.gov")
+
+    monkeypatch.setattr("blacklight.cli.scanner.scan_hosts", boom)
+    monkeypatch.setattr("blacklight.cli.scanner.find_nmap", lambda: "nmap")
+    monkeypatch.setattr("blacklight.cli.os.environ", {})
+    monkeypatch.setattr("blacklight.cli.paths.CACHE_DIR", tmp_path)
+    monkeypatch.setattr("blacklight.cli.paths.SCAN_LOG", tmp_path / "scan.log")
+    result = runner.invoke(app, ["scan", "192.168.1.10"])
+    assert result.exit_code == 1
+    assert "Scan failed" in result.output
+    assert "Traceback" not in result.output
+    assert not (tmp_path / "scan.log").exists()

@@ -1,9 +1,11 @@
 """blacklight-cli entry point: scan command with authorization guardrails."""
 
 import os
+import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
 
+import requests
 import typer
 from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
@@ -68,11 +70,25 @@ def scan(
     if output is not None and fmt == "html" and output.suffix in (".md", ".json"):
         fmt = "markdown" if output.suffix == ".md" else "json"
 
-    result = run_scan(targets, ports, timeout, no_cache)
+    try:
+        result = run_scan(targets, ports, timeout, no_cache)
+    except (
+        requests.RequestException,
+        subprocess.TimeoutExpired,
+        OSError,
+        RuntimeError,
+        ValueError,
+    ) as exc:
+        console.print(f"[red]Scan failed:[/] {exc}")
+        raise typer.Exit(code=1)
     _log_scan(targets, i_have_permission, result["meta"])
     render_terminal(result["findings"], result["meta"])
     if output is not None:
-        export_report(result["findings"], result["meta"], fmt, output)
+        try:
+            export_report(result["findings"], result["meta"], fmt, output)
+        except (OSError, ValueError) as exc:
+            console.print(f"[red]Report export failed:[/] {exc}")
+            raise typer.Exit(code=1)
         console.print(f"Report written to [bold]{output}[/]")
 
 

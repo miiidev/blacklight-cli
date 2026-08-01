@@ -37,7 +37,7 @@ blacklight scan 192.168.1.0/24
 blacklight scan 192.168.1.10 --ports 22,80,443 -o report.html
 
 # Scan a public host you are authorized to test (interactive confirmation)
-blacklight scan scanme.nmap.org --i-have-permission
+blacklight scan 203.0.113.10 --i-have-permission
 
 # JSON export for scripting
 blacklight scan 192.168.1.0/24 --format json -o scan.json
