@@ -1,9 +1,17 @@
-"""blacklight-cli entry point."""
+"""blacklight-cli entry point: scan command with authorization guardrails."""
+
+import os
+from datetime import datetime, timezone
+from pathlib import Path
 
 import typer
 from rich.console import Console
+from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 
-from blacklight import __version__
+from blacklight import __version__, paths
+from blacklight import enrichment, guardrails, scanner
+from blacklight.cve_matcher import Finding, NvdClient, build_findings
+from blacklight.reporter import export_report, render_terminal
 
 console = Console()
 
@@ -20,9 +28,100 @@ def _noop() -> None:
 
 
 @app.command()
+def scan(
+    target: list[str] = typer.Argument(..., help="Target host(s) or CIDR(s)."),
+    ports: str = typer.Option("1-1024", "--ports", "-p", help="Port range(s) to scan."),
+    output: Path | None = typer.Option(None, "--output", "-o", help="Export report to a file."),
+    fmt: str = typer.Option("html", "--format", help="Export format: html, markdown, json."),
+    i_have_permission: bool = typer.Option(
+        False, "--i-have-permission",
+        help="Confirm you are authorized to scan these targets.",
+    ),
+    no_cache: bool = typer.Option(False, "--no-cache", help="Bypass the local NVD/EPSS cache."),
+    timeout: int = typer.Option(30, "--timeout", help="Per-host nmap scan timeout in seconds."),
+) -> None:
+    """Scan targets for vulnerable services and report findings."""
+    paths.ensure_dirs()
+    verdict = guardrails.verify_targets(list(target), i_have_permission)
+    for blocked in verdict.blocked:
+        console.print(f"[red]Blocked:[/] {blocked} is not a private address. "
+                      "Pass --i-have-permission to allow scanning non-private targets.")
+    if verdict.needs_confirmation:
+        names = ", ".join(verdict.needs_confirmation)
+        if not typer.confirm(f"Target(s) {names} are public. "
+                             "Are you authorized to scan them?"):
+            console.print("[yellow]Aborted.[/]")
+            raise typer.Exit(code=1)
+    targets = verdict.allowed + verdict.needs_confirmation
+    if not targets:
+        console.print("[red]No scannable targets.[/]")
+        raise typer.Exit(code=1)
+    if scanner.find_nmap() is None:
+        console.print("[red]nmap not found.[/] Install it with one of:\n"
+                      "  apt:   sudo apt install nmap\n"
+                      "  brew:  brew install nmap\n"
+                      "  choco: choco install nmap")
+        raise typer.Exit(code=1)
+    if fmt not in ("html", "markdown", "json"):
+        console.print("[red]Invalid format.[/] Choose html, markdown, or json.")
+        raise typer.Exit(code=1)
+    if output is not None and fmt == "html" and output.suffix in (".md", ".json"):
+        fmt = "markdown" if output.suffix == ".md" else "json"
+
+    result = run_scan(targets, ports, timeout, no_cache)
+    _log_scan(targets, i_have_permission, result["meta"])
+    render_terminal(result["findings"], result["meta"])
+    if output is not None:
+        export_report(result["findings"], result["meta"], fmt, output)
+        console.print(f"Report written to [bold]{output}[/]")
+
+
+@app.command()
 def version() -> None:
     """Show the installed version."""
     console.print(f"blacklight-cli {__version__}")
+
+
+def run_scan(targets: list[str], ports: str, timeout: int, no_cache: bool) -> dict:
+    """Run the full pipeline: scan -> CVE match -> enrich -> score metadata."""
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        console=console,
+    ) as progress:
+        progress.add_task("Scanning hosts with nmap...", total=None)
+        records = scanner.scan_hosts(targets, ports, timeout)
+        phase = progress.add_task("Matching CVEs against NVD...", total=len(records))
+        client = NvdClient(api_key=os.environ.get("BLACKLIGHT_NVD_KEY"), no_cache=no_cache)
+        findings: list[Finding] = []
+        for record in records:
+            findings.extend(build_findings([record], client))
+            progress.advance(phase)
+        progress.add_task("Enriching with EPSS/KEV...", total=None)
+        findings = enrichment.enrich_findings(findings)
+    hosts_scanned = len({record.host for record in records})
+    return {
+        "findings": findings,
+        "meta": {
+            "targets": ", ".join(targets),
+            "hosts_scanned": hosts_scanned,
+            "services_found": len(records),
+            "findings_count": len(findings),
+            "generated": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        },
+    }
+
+
+def _log_scan(targets: list[str], permission: bool, meta: dict) -> None:
+    """Append one line per scan to ~/.blacklight/scan.log."""
+    line = (
+        f"{meta['generated']} target={','.join(targets)} "
+        f"permission={permission} hosts={meta['hosts_scanned']} "
+        f"services={meta['services_found']} findings={meta['findings_count']}\n"
+    )
+    with paths.SCAN_LOG.open("a", encoding="utf-8") as fh:
+        fh.write(line)
 
 
 def main() -> None:
