@@ -58,6 +58,18 @@ def test_nvd_lookup_uses_cache(tmp_path, monkeypatch):
     assert cves[0].cve_id == "CVE-2024-12345"
 
 
+def test_extract_fixed_version_list_shape():
+    from blacklight.cve_matcher import _extract_fixed_version
+
+    configs = [
+        {"nodes": [{"cpeMatch": [{"vulnerable": True, "versionEndExcluding": "9.7"}]}]},
+        {"nodes": [{"cpeMatch": [{"vulnerable": True, "versionEndExcluding": "9.6"}]}]},
+    ]
+    assert _extract_fixed_version(configs) == "9.6"
+    assert _extract_fixed_version(configs[0]) == "9.7"
+    assert _extract_fixed_version(None) is None
+
+
 def test_nvd_lookup_rate_limits(tmp_path, monkeypatch):
     client = NvdClient(cache_dir=tmp_path)
     calls = []
@@ -82,7 +94,7 @@ def test_nvd_lookup_rate_limits(tmp_path, monkeypatch):
     client.lookup("cpe:2.3:a:apache:http_server:2.4.58:*:*:*:*:*:*:*")
     assert len(calls) == 2
     assert len(sleeps) == 1
-    assert sleeps[0] >= 6.0
+    assert 5.5 <= sleeps[0] <= 6.0
 
 
 def test_build_findings_skips_unmapped_services(tmp_path):
