@@ -11,7 +11,8 @@ from rich.table import Table
 
 from blacklight import __version__
 from blacklight.cve_matcher import Finding
-from blacklight.scoring import host_risk_score
+from blacklight.scoring import host_risk_score, web_risk_score
+from blacklight.web.models import WebFinding
 
 SEVERITY_STYLE = {
     "critical": "bold red",
@@ -74,17 +75,61 @@ def host_risk_table(findings: list[Finding]) -> list[dict]:
     return sorted(rows, key=lambda row: row["score"], reverse=True)
 
 
-def render_terminal(findings: list[Finding], meta: dict, console: Console | None = None) -> None:
+def web_findings_table(web_findings: list[WebFinding]) -> Table:
+    """Rich table of web findings grouped by severity."""
+    table = Table(title="Web findings", expand=True)
+    table.add_column("Category")
+    table.add_column("URL")
+    table.add_column("Severity")
+    table.add_column("Detail")
+    table.add_column("Evidence")
+    order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "unknown": 4}
+    for finding in sorted(web_findings, key=lambda f: order.get(f.severity, 4)):
+        detail = finding.detail
+        evidence = finding.evidence
+        if finding.cve_id:
+            detail = f"{finding.cve_id}: {detail}"
+            kev = " [red]KEV[/red]" if finding.in_kev else ""
+            epss = f"{finding.epss:.3f}" if finding.epss is not None else "-"
+            evidence = f"{evidence} (EPSS {epss}{kev})"
+        table.add_row(
+            finding.category, finding.url, finding.severity, detail, evidence,
+            style=SEVERITY_STYLE.get(finding.severity, ""),
+        )
+    return table
+
+
+def _web_summary_text(web_findings: list[WebFinding], web_meta: dict) -> str:
+    return (
+        f"[bold]blacklight-cli[/] v{__version__} - web report\n"
+        f"URL: [bold]{web_meta['url']}[/] ({web_meta['resolved_ip']}) | "
+        f"Checks run: {web_meta['checks_run']} | Checks errored: {web_meta['checks_errored']} | "
+        f"Web findings: {len(web_findings)} | Web risk score: {web_risk_score(web_findings):.1f}"
+    )
+
+
+def render_terminal(
+    findings: list[Finding],
+    meta: dict,
+    console: Console | None = None,
+    web_findings: list[WebFinding] | None = None,
+    web_meta: dict | None = None,
+) -> None:
     """Render the rich terminal report."""
     console = console or Console()
-    console.print(
-        Panel(
-            f"[bold]blacklight-cli[/] v{__version__} - scan report\n"
-            f"Targets: [bold]{meta['targets']}[/] | Hosts scanned: {meta['hosts_scanned']} | "
-            f"Services found: {meta['services_found']} | Findings: {meta['findings_count']}",
-            title="Summary",
+    if web_findings is not None:
+        console.print(Panel(_web_summary_text(web_findings, web_meta), title="Summary"))
+        if web_findings:
+            console.print(web_findings_table(web_findings))
+    else:
+        console.print(
+            Panel(
+                f"[bold]blacklight-cli[/] v{__version__} - scan report\n"
+                f"Targets: [bold]{meta.get('targets', '')}[/] | Hosts scanned: {meta.get('hosts_scanned', 0)} | "
+                f"Services found: {meta.get('services_found', 0)} | Findings: {meta.get('findings_count', 0)}",
+                title="Summary",
+            )
         )
-    )
     hosts = host_risk_table(findings)
     if hosts:
         score_table = Table(title="Host risk scores", expand=True)
@@ -106,12 +151,24 @@ def render_terminal(findings: list[Finding], meta: dict, console: Console | None
     )
 
 
-def export_report(findings: list[Finding], meta: dict, fmt: str, output: Path) -> Path:
+def export_report(
+    findings: list[Finding],
+    meta: dict,
+    fmt: str,
+    output: Path,
+    web_findings: list[WebFinding] | None = None,
+    web_meta: dict | None = None,
+) -> Path:
     """Write the report in html, markdown, or json format."""
     payload = {
         "meta": meta,
         "findings": [f.to_dict() for f in findings],
         "hosts": host_risk_table(findings),
+        "web": (
+            {"meta": web_meta, "findings": [f.to_dict() for f in web_findings]}
+            if web_findings is not None
+            else None
+        ),
     }
     if fmt == "json":
         output.write_text(json.dumps(payload, indent=2), encoding="utf-8")

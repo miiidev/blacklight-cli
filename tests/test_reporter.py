@@ -69,3 +69,48 @@ def test_export_markdown(tmp_path):
 def test_export_unknown_format_raises(tmp_path):
     with pytest.raises(ValueError):
         export_report([], META, "pdf", tmp_path / "report.pdf")
+
+
+from blacklight.reporter import web_findings_table
+from blacklight.web.models import WebFinding
+
+
+def _web_findings():
+    return [
+        WebFinding(url="http://example.com/", category="security_header",
+                   detail="Missing X-Frame-Options", severity="low", evidence=""),
+        WebFinding(url="http://example.com/", category="sqli",
+                   detail="Possible SQL injection in parameter 'q'",
+                   severity="high", evidence="You have an error in your SQL syntax"),
+    ]
+
+
+def test_web_findings_table_columns():
+    table = web_findings_table(_web_findings())
+    assert table.title == "Web findings"
+    assert [c.header for c in table.columns] == ["Category", "URL", "Severity", "Detail", "Evidence"]
+
+
+def test_render_terminal_with_web_section():
+    import io
+    from rich.console import Console
+    out = io.StringIO()
+    render_terminal([], {}, Console(file=out, width=160), web_findings=_web_findings(),
+                    web_meta={"url": "http://example.com/", "checks_run": 18,
+                              "checks_errored": 0, "resolved_ip": "127.0.0.1",
+                              "host": "example.com", "cve_findings": 0})
+    text = out.getvalue()
+    assert "web report" in text
+    assert "Checks run: 18" in text
+    assert "Web risk score: 11.0" in text
+    assert "Possible SQL injection" in text
+
+
+def test_render_terminal_without_web_section_unaffected():
+    import io
+    from rich.console import Console
+    out = io.StringIO()
+    render_terminal([], {"targets": "192.168.1.10", "hosts_scanned": 0,
+                         "services_found": 0, "findings_count": 0}, Console(file=out))
+    text = out.getvalue()
+    assert "Web risk score" not in text
