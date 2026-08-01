@@ -141,3 +141,95 @@ def test_healthy_page_no_exposed_findings():
                  "exposed-server-status", "exposed-admin", "exposed-login",
                  "exposed-wp-admin", "exposed-backup"):
         assert CHECKS[name](page, probe) is None
+
+
+from blacklight.web.checks import link_params
+
+
+def test_link_params_discovers_query_params():
+    page = _page(text='<a href="/search?q=hello&page=2">S</a> <a href="/search?q=hi">S2</a>')
+    params = link_params(page, limit=10)
+    assert ("http://example.com/search", "q") in params
+    assert ("http://example.com/search", "page") in params
+    assert len(params) == 2
+
+
+def test_link_params_ignores_other_origins():
+    page = _page(text='<a href="https://evil.example.com/x?a=1">X</a>')
+    assert link_params(page) == []
+
+
+def test_sqli_detected_on_error_signature():
+    page = _page(text='<a href="/search?q=hello">S</a>')
+
+    def probe(url, params=None):
+        if "q=" in url and ("'" in url or "%27" in url):
+            return type("P", (), {"status": 200,
+                                  "text": "You have an error in your SQL syntax"})()
+        return type("P", (), {"status": 200, "text": "normal page"})()
+
+    finding = CHECKS["sqli-get"](page, probe)
+    assert finding is not None
+    assert finding.severity == "high"
+    assert finding.category == "sqli"
+
+
+def test_sqli_not_detected_on_clean_page():
+    page = _page(text='<a href="/search?q=hello">S</a>')
+
+    def probe(url, params=None):
+        return type("P", (), {"status": 200, "text": "normal page"})()
+
+    assert CHECKS["sqli-get"](page, probe) is None
+
+
+def test_sqli_baseline_already_error_does_not_trigger():
+    page = _page(text='<a href="/search?q=hello">S</a>')
+
+    def probe(url, params=None):
+        return type("P", (), {"status": 200, "text": "SQL syntax in everything"})
+
+    assert CHECKS["sqli-get"](page, probe) is None
+
+
+def test_xss_detected_on_reflection():
+    page = _page(text='<a href="/search?q=hello">S</a>')
+
+    def probe(url, params=None):
+        if "svg" in url:
+            return type("P", (), {"status": 200,
+                                  "text": '<input value=""><svg/onload=alert(1)>">'})()
+        return type("P", (), {"status": 200, "text": "normal page"})()
+
+    finding = CHECKS["xss-reflected"](page, probe)
+    assert finding is not None
+    assert finding.severity == "medium"
+
+
+def test_cmd_injection_detected_on_uid():
+    page = _page(text='<a href="/ping?host=localhost">S</a>')
+
+    def probe(url, params=None):
+        if "id" in url:
+            return type("P", (), {"status": 200,
+                                  "text": "uid=0(root) gid=0(root)"})()
+        return type("P", (), {"status": 200, "text": "ping output"})()
+
+    finding = CHECKS["cmd-injection"](page, probe)
+    assert finding is not None
+    assert finding.severity == "high"
+
+
+def test_cmd_injection_not_detected_clean():
+    page = _page(text='<a href="/ping?host=localhost">S</a>')
+
+    def probe(url, params=None):
+        return type("P", (), {"status": 200, "text": "64 bytes from 127.0.0.1"})()
+
+    assert CHECKS["cmd-injection"](page, probe) is None
+
+
+def test_no_params_no_injection_checks():
+    page = _page(text='<a href="/plain">P</a>')
+    for name in ("sqli-get", "xss-reflected", "cmd-injection"):
+        assert CHECKS[name](page, lambda *a, **k: None) is None

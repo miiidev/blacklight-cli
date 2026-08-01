@@ -138,3 +138,79 @@ CHECKS["exposed-wp-admin"] = _wp_admin_check
 CHECKS["exposed-backup"] = _backup_check
 CHECKS["misconfig-dir-listing"] = _dir_listing_check
 CHECKS["misconfig-default-page"] = _default_page_check
+
+
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+
+_SQL_SIGNATURES = re.compile(
+    r"SQL syntax|mysql_fetch|ORA-[0-9]{5}|PostgreSQL.*ERROR|"
+    r"Unclosed quotation mark|Microsoft OLE DB|SQLSTATE"
+)
+_CMD_SIGNATURES = re.compile(r"uid=\d+\(|command not found|sh: |/bin/sh")
+
+
+def link_params(page: Page, limit: int = 10) -> list[tuple[str, str]]:
+    """(absolute_url, param_name) pairs for same-origin links with query params."""
+    pairs: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for link in same_origin_links(page):
+        parsed = urlsplit(link)
+        for key, _value in parse_qsl(parsed.query, keep_blank_values=True):
+            pair = (f"{parsed.scheme}://{parsed.netloc}{parsed.path}", key)
+            if pair not in seen:
+                seen.add(pair)
+                pairs.append(pair)
+        if len(pairs) >= limit:
+            break
+    return pairs
+
+
+def _replace_param(url: str, param: str, value: str) -> str:
+    parsed = urlsplit(url)
+    qs = [(key, value if key == param else val)
+          for key, val in parse_qsl(parsed.query, keep_blank_values=True)]
+    if not qs:
+        qs = [(param, value)]
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path,
+                       urlencode(qs), ""))
+
+
+def _injection_check(category: str, severity: str, payloads: list[str],
+                     trigger: re.Pattern, detail: str) -> Check:
+    def check(page: Page, probe: ProbeFn) -> WebFinding | None:
+        for url, param in link_params(page):
+            baseline = probe(url)
+            if baseline.status != 200 or trigger.search(baseline.text):
+                continue
+            for payload in payloads:
+                result = probe(_replace_param(url, param, payload))
+                if result.status == 200 and trigger.search(result.text):
+                    return WebFinding(
+                        url=page.url, category=category,
+                        detail=f"{detail} in parameter '{param}'",
+                        severity=severity,
+                        evidence=result.text.strip()[:200],
+                    )
+        return None
+
+    return check
+
+
+CHECKS["sqli-get"] = _injection_check(
+    "sqli", "high",
+    ["'", "' OR 1=1 -- "],
+    _SQL_SIGNATURES,
+    "Possible SQL injection",
+)
+CHECKS["xss-reflected"] = _injection_check(
+    "xss", "medium",
+    ['"><svg/onload=alert(1)>'],
+    re.compile(re.escape('"><svg/onload=alert(1)>')),
+    "Reflected XSS payload",
+)
+CHECKS["cmd-injection"] = _injection_check(
+    "cmd_injection", "high",
+    [";id"],
+    _CMD_SIGNATURES,
+    "Possible OS command injection",
+)
