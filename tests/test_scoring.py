@@ -48,3 +48,35 @@ def test_total_capped_at_100():
     ]
     assert host_risk_score(findings) == 90.0
     assert host_risk_score(findings) <= 100.0
+
+
+from blacklight.scoring import web_risk_score
+from blacklight.web.models import WebFinding
+
+
+def test_web_risk_score_sums_severity_weights():
+    findings = [
+        WebFinding(url="u", category="sqli", detail="", severity="high", evidence=""),
+        WebFinding(url="u", category="xss", detail="", severity="medium", evidence=""),
+        WebFinding(url="u", category="security_header", detail="", severity="low", evidence=""),
+    ]
+    assert web_risk_score(findings) == 15.0  # 10 + 4 + 1
+
+
+def test_web_risk_score_caps_at_100():
+    findings = [
+        WebFinding(url="u", category="sqli", detail="", severity="critical", evidence="")
+        for _ in range(10)
+    ]
+    assert web_risk_score(findings) == 100.0
+
+
+def test_web_risk_score_empty():
+    assert web_risk_score([]) == 0.0
+
+
+def test_host_risk_score_treats_none_epss_as_zero():
+    f = Finding(host="h", port=80, service="s", version="v", cpe="c",
+                cve_id="CVE-1", description="d", cvss_score=9.0,
+                severity="critical", fixed_version=None, epss=None, in_kev=False)
+    assert host_risk_score([f]) == 20.0

@@ -29,3 +29,12 @@ def host_risk_score(findings: list[Finding]) -> float:
     epss_values = [f.epss or 0.0 for f in findings]
     epss_bonus = (max(epss_values) if epss_values else 0.0) * MAX_EPSS_BONUS
     return round(min(base + kev_bonus + epss_bonus, 100), 1)
+
+
+from blacklight.web.models import WebFinding
+
+
+def web_risk_score(findings: list[WebFinding]) -> float:
+    """Score a web target 0-100 from its findings (severity weights only)."""
+    base = sum(SEVERITY_WEIGHTS.get(f.severity, 0) for f in findings)
+    return round(min(base, 100), 1)
