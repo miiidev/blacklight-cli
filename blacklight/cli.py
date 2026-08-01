@@ -139,8 +139,12 @@ def web(
     _log_web_scan(url, i_have_permission, result.meta)
     render_terminal([], {}, web_findings=result.findings, web_meta=result.meta)
     if output is not None:
-        export_report([], {}, fmt, output,
-                      web_findings=result.findings, web_meta=result.meta)
+        try:
+            export_report([], {}, fmt, output,
+                          web_findings=result.findings, web_meta=result.meta)
+        except (OSError, ValueError) as exc:
+            console.print(f"[red]Report export failed:[/] {exc}")
+            raise typer.Exit(code=1)
         console.print(f"Report written to [bold]{output}[/]")
 
 

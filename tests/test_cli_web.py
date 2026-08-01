@@ -77,3 +77,22 @@ def test_web_fails_gracefully_on_upstream_error(monkeypatch, tmp_path):
     assert result.exit_code == 1
     assert "Web scan failed" in result.output
     assert "Traceback" not in result.output
+
+
+def test_web_export_failure_reports_error(monkeypatch, tmp_path):
+    monkeypatch.setattr("blacklight.cli.guardrails.socket.getaddrinfo",
+                        lambda host, *a, **k: [("AF_INET", 1, 6, "", ("127.0.0.1", 0))])
+    monkeypatch.setattr("blacklight.cli.run_web_scan",
+                        lambda *a, **k: type("R", (), _web_result())())
+    monkeypatch.setattr("blacklight.cli.paths.CACHE_DIR", tmp_path)
+    monkeypatch.setattr("blacklight.cli.paths.SCAN_LOG", tmp_path / "scan.log")
+    out = tmp_path / "web.json"
+
+    def boom(*a, **k):
+        raise OSError("permission denied")
+
+    monkeypatch.setattr("blacklight.cli.export_report", boom)
+    result = runner.invoke(app, ["web", "http://127.0.0.1", "-o", str(out)])
+    assert result.exit_code == 1
+    assert "Report export failed" in result.output
+    assert "Traceback" not in result.output
