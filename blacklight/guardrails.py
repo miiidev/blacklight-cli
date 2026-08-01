@@ -1,6 +1,8 @@
 """Authorization guardrails: default-deny scanning of non-private targets."""
 
 import ipaddress
+import socket
+import urllib.parse
 from dataclasses import dataclass
 
 PRIVATE_NETWORKS = (
@@ -64,3 +66,42 @@ def verify_targets(targets: list[str], permission_granted: bool) -> Verdict:
         else:
             blocked.append(target)
     return Verdict(allowed=allowed, needs_confirmation=needs_confirmation, blocked=blocked)
+
+
+def normalize_web_url(url: str) -> str:
+    """Prefix https:// when the input has no scheme."""
+    url = url.strip()
+    if not urllib.parse.urlparse(url).scheme:
+        return "https://" + url
+    return url
+
+
+def resolve_hostname(hostname: str) -> str | None:
+    """Resolve a hostname to its first IPv4 address, or None on failure."""
+    try:
+        infos = socket.getaddrinfo(hostname, None)
+    except OSError:
+        return None
+    for info in infos:
+        ip = info[4][0]
+        if ":" not in ip:
+            return ip
+    return None
+
+
+def verify_web_target(url: str, permission_granted: bool) -> Verdict:
+    """Classify a web target URL: allowed / needs_confirmation / blocked."""
+    try:
+        parsed = urllib.parse.urlparse(url)
+    except ValueError:
+        return Verdict(allowed=[], needs_confirmation=[], blocked=[url])
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return Verdict(allowed=[], needs_confirmation=[], blocked=[url])
+    ip = resolve_hostname(parsed.hostname)
+    if ip is None:
+        return Verdict(allowed=[], needs_confirmation=[], blocked=[url])
+    if is_private(ip):
+        return Verdict(allowed=[url], needs_confirmation=[], blocked=[])
+    if permission_granted:
+        return Verdict(allowed=[], needs_confirmation=[url], blocked=[])
+    return Verdict(allowed=[], needs_confirmation=[], blocked=[url])
