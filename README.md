@@ -72,6 +72,30 @@ seconds. Set it once: `export BLACKLIGHT_NVD_KEY=your-key`
 - Every scan is logged with timestamp, target, and outcome to
   `~/.blacklight/scan.log`.
 
+## Web scanning
+
+Probes a web application for common misconfigurations and injection flaws
+(passive, error-based detection — no exploitation, no blind/timing techniques).
+
+```bash
+# Scan a local web app (private targets need no flag)
+blacklight web http://127.0.0.1:8080
+
+# Scan a public site you are authorized to test (interactive confirmation)
+blacklight web https://example.com --i-have-permission
+
+# Export
+blacklight web http://127.0.0.1:8080 -o web_report.html
+```
+
+Checks: missing security headers (X-Frame-Options, CSP, HSTS, ...), exposed
+files and admin paths (`.git/config`, `.env`, `phpinfo`, `wp-admin`, backups),
+directory listing, default install pages, error-based SQLi / reflected XSS /
+command-injection probes on discovered GET parameters, and tech fingerprinting
+(server/framework versions) fed through the same CPE → NVD CVE pipeline as
+network scans. Web findings are scored by severity and exported alongside
+network findings in HTML/Markdown/JSON reports.
+
 ## Development
 
 ```bash
