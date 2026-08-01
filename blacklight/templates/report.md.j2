@@ -1,0 +1,20 @@
+# blacklight-cli scan report
+
+- Targets: {{ meta.targets }}
+- Hosts scanned: {{ meta.hosts_scanned }}
+- Services found: {{ meta.services_found }}
+- Findings: {{ meta.findings_count }}
+- Generated: {{ meta.generated }}
+
+## Host risk scores
+
+| Host | Risk score (0-100) | Findings |
+|------|--------------------|----------|
+{% for host in hosts %}| {{ host.host }} | {{ host.score }} | {{ host.findings }} |
+{% endfor %}
+## Findings
+
+| Host | Port | Service | Version | CVE | CVSS | Severity | EPSS | KEV | Description |
+|------|------|---------|---------|-----|------|----------|------|-----|-------------|
+{% for f in findings %}| {{ f.host }} | {{ f.port }} | {{ f.service }} | {{ f.version }} | [{{ f.cve_id }}](https://nvd.nist.gov/vuln/detail/{{ f.cve_id }}) | {{ f.cvss_score }} | {{ f.severity }} | {{ f.epss }} | {% if f.in_kev %}YES{% endif %} | {{ f.description }}{% if f.fixed_version %} (fixed in {{ f.fixed_version }}){% endif %} |
+{% endfor %}
