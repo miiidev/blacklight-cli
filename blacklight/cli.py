@@ -14,6 +14,7 @@ from blacklight import __version__, paths
 from blacklight import enrichment, guardrails, scanner
 from blacklight.cve_matcher import Finding, NvdClient, build_findings
 from blacklight.reporter import export_report, render_terminal
+from blacklight.web.engine import run_web_scan
 
 console = Console()
 
@@ -93,6 +94,57 @@ def scan(
 
 
 @app.command()
+def web(
+    url: str = typer.Argument(..., help="Web target URL (hostname or http(s) URL)."),
+    i_have_permission: bool = typer.Option(
+        False, "--i-have-permission",
+        help="Confirm you are authorized to scan this target.",
+    ),
+    no_cache: bool = typer.Option(False, "--no-cache", help="Bypass the local NVD/EPSS cache."),
+    output: Path | None = typer.Option(None, "--output", "-o", help="Export report to a file."),
+    fmt: str = typer.Option("html", "--format", help="Export format: html, markdown, json."),
+    timeout: int = typer.Option(30, "--timeout", help="HTTP request timeout in seconds."),
+) -> None:
+    """Scan a web application for misconfigurations and injection flaws."""
+    paths.ensure_dirs()
+    url = guardrails.normalize_web_url(url)
+    verdict = guardrails.verify_web_target(url, i_have_permission)
+    for blocked in verdict.blocked:
+        console.print(f"[red]Blocked:[/] {blocked} must be an http(s) URL for a private "
+                      "host, or pass --i-have-permission for public hosts.")
+    if verdict.needs_confirmation:
+        if not typer.confirm(f"Target {url} is public. Are you authorized to scan it?"):
+            console.print("[yellow]Aborted.[/]")
+            raise typer.Exit(code=1)
+    if not (verdict.allowed or verdict.needs_confirmation):
+        console.print("[red]No scannable targets.[/]")
+        raise typer.Exit(code=1)
+    if fmt not in ("html", "markdown", "json"):
+        console.print("[red]Invalid format.[/] Choose html, markdown, or json.")
+        raise typer.Exit(code=1)
+    if output is not None and fmt == "html" and output.suffix in (".md", ".json"):
+        fmt = "markdown" if output.suffix == ".md" else "json"
+
+    try:
+        result = run_web_scan(url, timeout, no_cache)
+    except (
+        requests.RequestException,
+        subprocess.TimeoutExpired,
+        OSError,
+        RuntimeError,
+        ValueError,
+    ) as exc:
+        console.print(f"[red]Web scan failed:[/] {exc}")
+        raise typer.Exit(code=1)
+    _log_web_scan(url, i_have_permission, result.meta)
+    render_terminal([], {}, web_findings=result.findings, web_meta=result.meta)
+    if output is not None:
+        export_report([], {}, fmt, output,
+                      web_findings=result.findings, web_meta=result.meta)
+        console.print(f"Report written to [bold]{output}[/]")
+
+
+@app.command()
 def version() -> None:
     """Show the installed version."""
     console.print(f"blacklight-cli {__version__}")
@@ -135,6 +187,17 @@ def _log_scan(targets: list[str], permission: bool, meta: dict) -> None:
         f"{meta['generated']} target={','.join(targets)} "
         f"permission={permission} hosts={meta['hosts_scanned']} "
         f"services={meta['services_found']} findings={meta['findings_count']}\n"
+    )
+    with paths.SCAN_LOG.open("a", encoding="utf-8") as fh:
+        fh.write(line)
+
+
+def _log_web_scan(url: str, permission: bool, meta: dict) -> None:
+    """Append one line per web scan to ~/.blacklight/scan.log."""
+    line = (
+        f"{meta['generated']} url={meta['url']} "
+        f"permission={permission} checks={meta['checks_run']} "
+        f"errors={meta['checks_errored']} findings={meta['cve_findings']}\n"
     )
     with paths.SCAN_LOG.open("a", encoding="utf-8") as fh:
         fh.write(line)
