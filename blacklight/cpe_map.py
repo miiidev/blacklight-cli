@@ -13,6 +13,7 @@ SERVICE_CPE: dict[str, tuple[str, str]] = {
     "tomcat": ("apache", "tomcat"),
     "mysql": ("oracle", "mysql"),
     "mariadb": ("mariadb", "mariadb"),
+    "php": ("php", "php"),
     "postgresql": ("postgresql", "postgresql"),
     "postgres": ("postgresql", "postgresql"),
     "redis": ("redis", "redis"),

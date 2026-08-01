@@ -38,3 +38,9 @@ def test_mapping_table_covers_common_services():
     for service in ("openssh", "apache httpd", "nginx", "mysql", "postgresql",
                     "redis", "vsftpd", "postfix", "dovecot", "bind", "openvpn"):
         assert service in SERVICE_CPE
+
+
+def test_php_maps_to_php():
+    assert "cpe:2.3:a:php:php:7.4.33:*:*:*:*:*:*:*" in (
+        service_to_cpe("php", "7.4.33")
+    )
