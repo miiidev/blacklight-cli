@@ -11,6 +11,7 @@ from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 
 from blacklight import __version__, paths
+from blacklight import theme
 from blacklight import enrichment, guardrails, scanner
 from blacklight.cve_matcher import Finding, NvdClient, build_findings
 from blacklight.reporter import export_report, render_terminal
@@ -25,9 +26,9 @@ app = typer.Typer(
 
 
 @app.callback()
-def _noop() -> None:
-    """No-op callback: keeps blacklight a command group with subcommands."""
-    pass
+def _show_banner() -> None:
+    """Show the brand banner on every invocation, including --help."""
+    theme.print_banner(console)
 
 
 @app.command()
@@ -157,9 +158,13 @@ def version() -> None:
 def run_scan(targets: list[str], ports: str, timeout: int, no_cache: bool) -> dict:
     """Run the full pipeline: scan -> CVE match -> enrich -> score metadata."""
     with Progress(
-        SpinnerColumn(),
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
+        SpinnerColumn(spinner_name="aesthetic", style=theme.ACCENT),
+        TextColumn("[cyan]{task.description}"),
+        BarColumn(
+            bar_width=None,
+            complete_style=theme.CYAN,
+            finished_style=theme.PURPLE,
+        ),
         console=console,
     ) as progress:
         progress.add_task("Scanning hosts with nmap...", total=None)

@@ -14,6 +14,12 @@ def test_version_command():
     assert "blacklight-cli 0.1.0" in result.output
 
 
+def test_banner_printed_on_invocation():
+    result = runner.invoke(app, ["version"])
+    assert result.exit_code == 0
+    assert "scan · find · illuminate" in result.output
+
+
 def test_scan_blocks_public_target_without_permission(monkeypatch):
     def fail(*args, **kwargs):
         raise AssertionError("nmap should not run for blocked targets")
