@@ -27,7 +27,7 @@ app = typer.Typer(
 
 @app.callback()
 def _show_banner() -> None:
-    """Show the brand banner on every invocation, including --help."""
+    """Show the brand banner before every subcommand invocation."""
     theme.print_banner(console)
 
 
