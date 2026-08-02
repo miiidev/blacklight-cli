@@ -14,6 +14,11 @@ def test_banner_has_wordmark_and_tagline():
     assert "scan · find · illuminate" in theme.BANNER
 
 
+def test_gradient_text_empty_returns_empty_text():
+    text = theme.gradient_text("")
+    assert text.plain == ""
+
+
 def test_gradient_text_preserves_content_and_colors():
     text = theme.gradient_text(theme.BANNER)
     assert text.plain == theme.BANNER

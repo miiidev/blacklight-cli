@@ -2,6 +2,7 @@
 
 import os
 import subprocess
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -17,8 +18,7 @@ from blacklight.cve_matcher import Finding, NvdClient, build_findings
 from blacklight.reporter import export_report, render_terminal
 from blacklight.web.engine import run_web_scan
 
-import sys
-
+# Windows: ensure redirected output (cp1252 pipes) can encode the banner glyphs.
 for _stream in (sys.stdout, sys.stderr):
     if hasattr(_stream, "reconfigure"):
         try:

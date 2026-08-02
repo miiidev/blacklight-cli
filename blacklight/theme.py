@@ -44,6 +44,8 @@ def _lerp_hex(start: str, end: str, t: float) -> str:
 def gradient_text(text: str) -> Text:
     """Render text with a purple-to-cyan gradient across its width."""
     lines = text.splitlines()
+    if not lines:
+        return Text()
     max_width = max(len(line) for line in lines)
     out = Text()
     for i, line in enumerate(lines):
