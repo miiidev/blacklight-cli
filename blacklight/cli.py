@@ -17,6 +17,15 @@ from blacklight.cve_matcher import Finding, NvdClient, build_findings
 from blacklight.reporter import export_report, render_terminal
 from blacklight.web.engine import run_web_scan
 
+import sys
+
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        try:
+            _stream.reconfigure(encoding="utf-8")
+        except (OSError, ValueError):
+            pass
+
 console = Console()
 
 app = typer.Typer(
