@@ -9,7 +9,7 @@ from pathlib import Path
 import requests
 
 from blacklight import paths
-from blacklight.cpe_map import extract_version, service_to_cpe
+from blacklight.cpe_map import cpe_to_match_string, extract_version, service_to_cpe
 from blacklight.scanner import ScanRecord
 
 NVD_API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
@@ -97,7 +97,7 @@ class NvdClient:
         headers = {"apiKey": self.api_key} if self.api_key else {}
         resp = self.session.get(
             NVD_API_URL,
-            params={"cpeName": cpe, "resultsPerPage": 100},
+            params={"virtualMatchString": cpe_to_match_string(cpe), "resultsPerPage": 100},
             headers=headers,
             timeout=30,
         )

@@ -1,6 +1,11 @@
 import pytest
 
-from blacklight.cpe_map import SERVICE_CPE, extract_version, service_to_cpe
+from blacklight.cpe_map import (
+    SERVICE_CPE,
+    cpe_to_match_string,
+    extract_version,
+    service_to_cpe,
+)
 
 
 @pytest.mark.parametrize(
@@ -43,4 +48,16 @@ def test_mapping_table_covers_common_services():
 def test_php_maps_to_php():
     assert "cpe:2.3:a:php:php:7.4.33:*:*:*:*:*:*:*" in (
         service_to_cpe("php", "7.4.33")
+    )
+
+
+def test_cpe_to_match_string_known_version():
+    assert cpe_to_match_string("cpe:2.3:a:openbsd:openssh:9.6:*:*:*:*:*:*:*") == (
+        "cpe:2.3:a:openbsd:openssh:9.6"
+    )
+
+
+def test_cpe_to_match_string_unknown_version_drops_wildcards():
+    assert cpe_to_match_string("cpe:2.3:a:oracle:mysql:*:*:*:*:*:*:*:*") == (
+        "cpe:2.3:a:oracle:mysql"
     )

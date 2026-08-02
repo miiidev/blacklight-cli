@@ -97,6 +97,33 @@ def test_nvd_lookup_rate_limits(tmp_path, monkeypatch):
     assert 5.5 <= sleeps[0] <= 6.0
 
 
+def test_nvd_lookup_uses_virtual_match_string(tmp_path, monkeypatch):
+    client = NvdClient(cache_dir=tmp_path)
+    captured = {}
+
+    class FakeResponse:
+        status_code = 200
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return {"vulnerabilities": []}
+
+    def fake_get(url, **kwargs):
+        captured["url"] = url
+        captured["params"] = kwargs.get("params")
+        return FakeResponse()
+
+    monkeypatch.setattr(client.session, "get", fake_get)
+    client.lookup("cpe:2.3:a:apache:http_server:*:*:*:*:*:*:*")
+    assert "virtualMatchString" in captured["params"]
+    assert captured["params"]["virtualMatchString"] == "cpe:2.3:a:apache:http_server"
+    assert "cpeName" not in captured["params"]
+    client.lookup("cpe:2.3:a:apache:http_server:2.4.58:*:*:*:*:*:*:*")
+    assert captured["params"]["virtualMatchString"] == "cpe:2.3:a:apache:http_server:2.4.58"
+
+
 def test_build_findings_skips_unmapped_services(tmp_path):
     client = NvdClient(cache_dir=tmp_path)
     records = [ScanRecord(host="192.168.1.10", port=22, protocol="tcp", service="custom-app", version="1.2.3")]

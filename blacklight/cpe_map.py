@@ -85,3 +85,16 @@ def service_to_cpe(service: str, version: str | None) -> str | None:
     vendor, product = pair
     ver = version or "*"
     return f"cpe:2.3:a:{vendor}:{product}:{ver}:*:*:*:*:*:*:*"
+
+
+def cpe_to_match_string(cpe: str) -> str:
+    """Reduce a CPE 2.3 URI to a CPE match string for NVD's API.
+
+    NVD's cpeName parameter rejects wildcards in the version component;
+    virtualMatchString accepts match strings with missing/wildcarded
+    components. A concrete version is kept for precision.
+    """
+    parts = cpe.split(":")
+    if len(parts) < 6 or parts[5] == "*":
+        return ":".join(parts[:5])
+    return ":".join(parts[:6])
