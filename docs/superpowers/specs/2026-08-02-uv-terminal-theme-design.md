@@ -271,8 +271,9 @@ this sketch communicates layout, not pixel-perfection.)
 
 ### New tests (`tests/test_theme.py`)
 
-1. `test_banner_all_lines_same_width` — every line of `BANNER` is the same
-   width and ≤ 70 chars; no trailing whitespace.
+1. `test_banner_lines_are_clean_and_narrow` — every line of `BANNER` is
+   ≤ 70 chars; no trailing whitespace; at least 9 lines; contains the
+   `scan · find · illuminate` tagline.
 2. `test_gradient_text_returns_colored` — `gradient_text` output contains
    styled spans (`Text` segments have style set) and preserves line count.
 3. `test_print_banner_skips_narrow_console` — a `Console(width=60)` records
