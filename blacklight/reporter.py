@@ -12,15 +12,8 @@ from rich.table import Table
 from blacklight import __version__
 from blacklight.cve_matcher import Finding
 from blacklight.scoring import host_risk_score, web_risk_score
+from blacklight.theme import ACCENT, CYAN, PURPLE, SEVERITY_STYLE, risk_gauge
 from blacklight.web.models import WebFinding
-
-SEVERITY_STYLE = {
-    "critical": "bold red",
-    "high": "dark_orange",
-    "medium": "yellow",
-    "low": "white",
-    "unknown": "dim",
-}
 
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
 
@@ -36,7 +29,12 @@ def _severity_key(finding: Finding) -> float:
 
 def findings_table(findings: list[Finding]) -> Table:
     """Rich table of findings sorted by CVSS score, descending."""
-    table = Table(title="Findings", expand=True)
+    table = Table(
+        title="Findings",
+        expand=True,
+        border_style=CYAN,
+        header_style=f"bold {PURPLE}",
+    )
     table.add_column("Host")
     table.add_column("Port")
     table.add_column("Service")
@@ -77,7 +75,12 @@ def host_risk_table(findings: list[Finding]) -> list[dict]:
 
 def web_findings_table(web_findings: list[WebFinding]) -> Table:
     """Rich table of web findings grouped by severity."""
-    table = Table(title="Web findings", expand=True)
+    table = Table(
+        title="Web findings",
+        expand=True,
+        border_style=CYAN,
+        header_style=f"bold {PURPLE}",
+    )
     table.add_column("Category")
     table.add_column("URL")
     table.add_column("Severity")
@@ -101,7 +104,7 @@ def web_findings_table(web_findings: list[WebFinding]) -> Table:
 
 def _web_summary_text(web_findings: list[WebFinding], web_meta: dict) -> str:
     return (
-        f"[bold]blacklight-cli[/] v{__version__} - web report\n"
+        f"[bold {ACCENT}]blacklight-cli[/] v{__version__} - web report\n"
         f"URL: [bold]{web_meta['url']}[/] ({web_meta['resolved_ip']}) | "
         f"Checks run: {web_meta['checks_run']} | Checks errored: {web_meta['checks_errored']} | "
         f"Web findings: {len(web_findings)} | Web risk score: {web_risk_score(web_findings):.1f}"
@@ -118,26 +121,40 @@ def render_terminal(
     """Render the rich terminal report."""
     console = console or Console()
     if web_findings is not None:
-        console.print(Panel(_web_summary_text(web_findings, web_meta), title="Summary"))
+        console.print(
+            Panel(
+                _web_summary_text(web_findings, web_meta),
+                title="Summary",
+                border_style=PURPLE,
+                title_align="center",
+            )
+        )
         if web_findings:
             console.print(web_findings_table(web_findings))
     else:
         console.print(
             Panel(
-                f"[bold]blacklight-cli[/] v{__version__} - scan report\n"
+                f"[bold {ACCENT}]blacklight-cli[/] v{__version__} - scan report\n"
                 f"Targets: [bold]{meta.get('targets', '')}[/] | Hosts scanned: {meta.get('hosts_scanned', 0)} | "
                 f"Services found: {meta.get('services_found', 0)} | Findings: {meta.get('findings_count', 0)}",
                 title="Summary",
+                border_style=PURPLE,
+                title_align="center",
             )
         )
     hosts = host_risk_table(findings)
     if hosts:
-        score_table = Table(title="Host risk scores", expand=True)
+        score_table = Table(
+            title="Host risk scores",
+            expand=True,
+            border_style=CYAN,
+            header_style=f"bold {PURPLE}",
+        )
         score_table.add_column("Host")
         score_table.add_column("Risk score (0-100)")
         score_table.add_column("Findings")
         for row in hosts:
-            score_table.add_row(row["host"], f"{row['score']:.1f}", str(row["findings"]))
+            score_table.add_row(row["host"], risk_gauge(row["score"]), str(row["findings"]))
         console.print(score_table)
     if findings:
         console.print(findings_table(findings))
@@ -145,8 +162,10 @@ def render_terminal(
         Panel(
             "Risk score: severity-weighted base (capped at 60) + 10 per KEV finding "
             "(capped at 20) + max EPSS x 10, capped at 100.\n"
-            "For use only on systems you own or are authorized to test.",
+            "For use only on systems you own or are authorized to test.\n"
+            f"[cyan]●[/] [bold {ACCENT}]Scan complete[/] — report written by blacklight-cli",
             title="Notes",
+            border_style=PURPLE,
         )
     )
 

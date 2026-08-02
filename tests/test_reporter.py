@@ -114,3 +114,17 @@ def test_render_terminal_without_web_section_unaffected():
                          "services_found": 0, "findings_count": 0}, Console(file=out))
     text = out.getvalue()
     assert "Web risk score" not in text
+
+
+def test_render_terminal_has_footer():
+    console = Console(record=True, width=160)
+    render_terminal([_finding()], META, console=console)
+    assert "Scan complete" in console.export_text()
+
+
+def test_render_terminal_risk_gauge_in_score_table():
+    console = Console(record=True, width=160)
+    render_terminal([_finding()], META, console=console)
+    text = console.export_text()
+    assert "░" in text
+    assert "█" in text
