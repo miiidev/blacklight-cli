@@ -15,7 +15,10 @@
 - Severity colors stay semantic: critical `bold red`, high `dark_orange`, medium `yellow`, low `white`, unknown `dim`.
 - Theme colors: `PURPLE = "#8b5cf6"`, `CYAN = "#22d3ee"`, `ACCENT = "#f0abfc"`, `DIM = "#6b7280"`.
 - Every printed text string currently asserted by tests stays verbatim: `blacklight-cli 0.1.0`, `Web risk score: 11.0`, `Checks run: 18`, `web report`, `Summary`, `CVE-2024-12345`, `critica`.
-- Banner prints on every invocation including `--help` (via the typer callback).
+- Banner prints on every **subcommand** invocation including subcommand-level
+  `--help` (via the typer callback). Top-level `blacklight --help` and bare
+  `blacklight` have no banner (click renders group help before the callback
+  runs — user-agreed relaxation, 2026-08-02).
 - Banner is skipped silently when `console.width < 70`.
 - Commit after every task with the message shown in the task.
 
@@ -248,7 +251,7 @@ In `blacklight/cli.py`:
 ```python
 @app.callback()
 def _show_banner() -> None:
-    """Show the brand banner on every invocation, including --help."""
+    """Show the brand banner before every subcommand invocation."""
     theme.print_banner(console)
 ```
 

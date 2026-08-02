@@ -28,7 +28,12 @@ metaphor for a vulnerability scanner).
 ## User decisions (from brainstorming)
 
 1. Full revamp: banner + animations + decorated output everywhere.
-2. Banner appears on **every invocation**, including `--help`.
+2. Banner appears on **every subcommand invocation**, including
+   subcommand-level `--help` (e.g. `blacklight scan --help`). The
+   top-level `blacklight --help` and bare `blacklight` invocations do not
+   print the banner (click renders group help before the callback runs —
+   verified empirically; this relaxation was agreed with the user on
+   2026-08-02).
 3. Theme: purple/cyan UV — `PURPLE #8b5cf6`, `CYAN #22d3ee`,
    accent `ACCENT #f0abfc`, dim `DIM #6b7280`.
 4. Banner art: block-letter `BLACKLIGHT` wordmark with a small lens/beam
@@ -128,19 +133,22 @@ SEVERITY_STYLE = {
 
 ## CLI changes (`blacklight/cli.py`) — detailed
 
-### Banner on every invocation
+### Banner on every subcommand invocation
 
-The existing `_noop` callback (which runs for every command, and also before
-typer renders `--help`) becomes:
+The `_noop` callback (which runs before every subcommand, and also before
+typer renders subcommand-level `--help`) becomes:
 
 ```python
 @app.callback()
-def _banner() -> None:
+def _show_banner() -> None:
     theme.print_banner(console)
 ```
 
-This means: `blacklight`, `blacklight --help`, `blacklight scan ...`,
-`blacklight web ...`, and `blacklight version` all print the banner first.
+This means: `blacklight scan ...`, `blacklight web ...`,
+`blacklight version`, and their `--help` all print the banner first.
+Top-level `blacklight --help` and bare `blacklight` do NOT print it —
+click handles group-level help during argument parsing, before the
+callback runs (verified empirically with click 8.4.2).
 
 ### Progress bar
 
@@ -246,7 +254,7 @@ this sketch communicates layout, not pixel-perfection.)
 |---|---|
 | Console width < 70 | `print_banner` prints nothing (no exception, no partial banner) |
 | Non-TTY stdout (pipe/CI) | Rich strips colors; banner still prints; progress degrades gracefully |
-| `--help` invocation | Banner prints above help text (callback runs first) |
+| `--help` invocation (subcommand) | Banner prints above subcommand help text (callback runs first); top-level group `--help` has no banner (click renders it before the callback) |
 | Score outside [0,100] | `risk_gauge` clamps before formatting |
 | Web scan with zero findings | Same restyled panels; no tables printed (current behavior preserved) |
 | Terminal without color support | Rich falls back to no-color styles; nothing crashes |
