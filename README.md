@@ -93,7 +93,9 @@ files and admin paths (`.git/config`, `.env`, `phpinfo`, `wp-admin`, backups),
 directory listing, default install pages, error-based SQLi / reflected XSS /
 command-injection probes on discovered GET parameters, and tech fingerprinting
 (server/framework versions) fed through the same CPE → NVD CVE pipeline as
-network scans. Web findings are scored by severity and exported alongside
+network scans. Web findings are scored by severity only — CVE-backed rows
+show EPSS/KEV enrichment but it does not add to the web score (conservative
+by design) — and exported alongside
 network findings in HTML/Markdown/JSON reports.
 
 ## Development

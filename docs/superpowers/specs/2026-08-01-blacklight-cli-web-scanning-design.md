@@ -152,7 +152,7 @@ blacklight web <url> [--i-have-permission] [--no-cache] [--output/-o] [--format 
 ### 7. Scoring (scoring.py)
 
 - `host_risk_score` hardened: `epss=None` treated as `0.0` (add test) — behavior for existing findings unchanged.
-- Web risk score = same severity-weight formula with EPSS/KEV terms zeroed (they are None/False for non-CVE web findings). CVE-backed fingerprint findings score with EPSS/KEV as today.
+- Web risk score = same severity-weight formula with EPSS/KEV terms zeroed (they are None/False for non-CVE web findings). Deliberate conservative choice (amended at implementation): CVE-backed fingerprint findings also score severity-only — EPSS/KEV enrich their report rows but do not add to the web score, which understates rather than overstates risk.
 
 ### 8. Reporter (reporter.py + templates)
 
