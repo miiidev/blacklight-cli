@@ -1,7 +1,4 @@
-import os
-
-from blacklight.cve_matcher import CVE, Finding
-from blacklight.scanner import ScanRecord
+from blacklight.cve_matcher import CVE
 from blacklight.web.engine import WebResult, port_for_url, run_web_scan
 
 
@@ -96,6 +93,8 @@ def test_run_web_scan_counts_errored_checks(monkeypatch):
 def test_run_web_scan_builds_cve_findings_from_fingerprint(monkeypatch):
     page = _page(headers={"Server": "Apache/2.4.49"})
     monkeypatch.setattr("blacklight.web.engine.http.fetch_page", lambda *a, **k: page)
+    monkeypatch.setattr("blacklight.web.engine.http.probe",
+                        lambda *a, **k: type("P", (), {"status": 404, "text": "not found"})())
     monkeypatch.setattr("blacklight.web.engine.guardrails.resolve_hostname",
                         lambda host: "192.168.1.10")
 
