@@ -1,6 +1,7 @@
 import io
+from contextlib import nullcontext
 
-from blacklight.console import CommandRunner
+from blacklight.console import CommandRunner, ConsoleApp
 
 
 def make_runner(**overrides):
@@ -169,6 +170,85 @@ def test_empty_and_blank_lines_are_noops():
     runner = make_runner()
     assert runner.execute("", io.StringIO()) is False
     assert runner.execute("   ", io.StringIO()) is False
+
+
+def test_web_run_warns_when_multiple_targets():
+    captured = {}
+
+    def fake_web(url, **kwargs):
+        captured["url"] = url
+        return 0
+
+    runner, out = run_commands(
+        ["use web", "set TARGET http://127.0.0.1,http://alias.example", "run"],
+        make_runner(execute_web=fake_web),
+    )
+    assert captured["url"] == "http://127.0.0.1"
+    assert "web accepts a single TARGET" in out
+
+
+def test_run_rejects_non_positive_timeout():
+    called = []
+
+    def fake_scan(targets, **kwargs):
+        called.append(targets)
+        return 0
+
+    _, out = run_commands(
+        ["use scan", "set TIMEOUT 0", "run"],
+        make_runner(execute_scan=fake_scan),
+    )
+    assert "TIMEOUT must be a positive integer" in out
+    assert called == []
+
+
+def test_run_interactive_ends_on_exit(monkeypatch):
+    lines = ["modules\n", "exit\n"]
+
+    class FakePrompt:
+        def __init__(self, *a, **k):
+            pass
+
+        def prompt(self, *a, **k):
+            if not lines:
+                raise EOFError
+            return lines.pop(0)
+
+    monkeypatch.setattr("prompt_toolkit.PromptSession", FakePrompt)
+    monkeypatch.setattr("prompt_toolkit.patch_stdout.patch_stdout", nullcontext)
+    app = ConsoleApp(execute_scan=lambda *a, **k: 0, execute_web=lambda *a, **k: 0)
+    app._run_interactive()
+
+
+def test_run_interactive_survives_keyboard_interrupt(monkeypatch, capsys):
+    lines = ["run\n", "exit\n"]
+
+    def boom(*a, **k):
+        raise KeyboardInterrupt
+
+    class FakePrompt:
+        def __init__(self, *a, **k):
+            pass
+
+        def prompt(self, *a, **k):
+            return lines.pop(0)
+
+    monkeypatch.setattr("prompt_toolkit.PromptSession", FakePrompt)
+    monkeypatch.setattr("prompt_toolkit.patch_stdout.patch_stdout", nullcontext)
+    app = ConsoleApp(execute_scan=boom, execute_web=lambda *a, **k: 0)
+    app.runner.state.active = "scan"
+    app.runner.state.values["TARGET"] = "192.168.1.10"
+    app._run_interactive()
+    assert "Interrupted" in capsys.readouterr().out
+
+
+def test_prompt_html_reflects_active_module():
+    app = ConsoleApp(execute_scan=lambda *a, **k: 0, execute_web=lambda *a, **k: 0)
+    assert "ansicyan" in app._prompt_html()
+    assert "(scan)" not in app._prompt_html()
+    app.runner.state.active = "scan"
+    assert "(scan)" in app._prompt_html()
+    assert "ansipurple" in app._prompt_html()
 
 
 from typer.testing import CliRunner

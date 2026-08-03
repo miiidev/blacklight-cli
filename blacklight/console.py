@@ -216,6 +216,9 @@ class CommandRunner:
         except ValueError:
             console.print("[red]TIMEOUT must be an integer.[/]")
             return
+        if timeout <= 0:
+            console.print("[red]TIMEOUT must be a positive integer.[/]")
+            return
         target = self._current_value("TARGET").strip()
         if not target:
             console.print("[red]TARGET not set.[/]")
@@ -234,6 +237,9 @@ class CommandRunner:
             kwargs["ports"] = self._current_value("PORTS")
             code = self._execute_scan(targets, **kwargs)
         else:
+            if len(targets) > 1:
+                console.print("[yellow]web accepts a single TARGET; "
+                              "scanning the first only[/]")
             code = self._execute_web(targets[0], **kwargs)
         console.print("[green]Done.[/]" if code == 0 else "[red]Done with errors.[/]")
 
@@ -302,8 +308,12 @@ class ConsoleApp:
                     line = session.prompt(HTML(self._prompt_html()))
                 except (EOFError, KeyboardInterrupt):
                     break
-                if self.runner.execute(line, sys.stdout):
-                    break
+                try:
+                    if self.runner.execute(line, sys.stdout):
+                        break
+                except KeyboardInterrupt:
+                    Console().print("[yellow]Interrupted.[/]")
+                    continue
         print()
 
     def _prompt_html(self) -> str:
