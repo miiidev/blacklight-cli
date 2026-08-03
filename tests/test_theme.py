@@ -5,13 +5,13 @@ from blacklight import theme
 
 def test_banner_lines_are_clean_and_narrow():
     for line in theme.BANNER.splitlines():
-        assert len(line) <= 70
+        assert len(line) <= 80
         assert line == line.rstrip()
 
 
-def test_banner_has_wordmark_and_tagline():
-    assert len(theme.BANNER.splitlines()) >= 9
-    assert "scan · find · illuminate" in theme.BANNER
+def test_banner_has_wordmark():
+    assert len(theme.BANNER.splitlines()) >= 6
+    assert "██████╗" in theme.BANNER
 
 
 def test_gradient_text_empty_returns_empty_text():
@@ -35,7 +35,7 @@ def test_print_banner_skips_narrow_console():
 def test_print_banner_prints_on_wide_console():
     console = Console(record=True, width=160)
     theme.print_banner(console)
-    assert "scan · find · illuminate" in console.export_text()
+    assert "██████╗" in console.export_text()
 
 
 def test_risk_gauge_band_colors():

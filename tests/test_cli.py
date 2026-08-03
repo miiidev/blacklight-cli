@@ -17,7 +17,7 @@ def test_version_command():
 def test_banner_printed_on_invocation():
     result = runner.invoke(app, ["version"])
     assert result.exit_code == 0
-    assert "scan · find · illuminate" in result.output
+    assert "██████╗" in result.output
 
 
 def test_scan_blocks_public_target_without_permission(monkeypatch):

@@ -9,16 +9,14 @@ ACCENT = "#f0abfc"
 DIM = "#6b7280"
 
 BANNER = """\
-         ▄▄▄▄▄▄▄▄▄▄
-        ▐████████████▌
-        ▐█ ▄▄█▀▀█▄▄ █▌
-         ▀▀▀▀▀▀▀▀▀▀▀▀
-███ █    █   ██ █ █ █   ███  ██ █ █ ███
-█ █ █  █ █ █   █ █ █ █    █ █   █ █ █ █  █
-███ █  ███ █   ██  █    █  █ ██ ███  █
-█ █ █  █ █ █   █ █ █ █    █  █ █ █ █  █
-███ ███ █ █  ██ █ █ ███ ███  ██ █ █  █
-       scan · find · illuminate"""
+██████╗ ██╗      █████╗  ██████╗██╗  ██╗██╗     ██╗ ██████╗ ██╗  ██╗████████╗
+██╔══██╗██║     ██╔══██╗██╔════╝██║ ██╔╝██║     ██║██╔════╝ ██║  ██║╚══██╔══╝
+██████╔╝██║     ███████║██║     █████╔╝ ██║     ██║██║  ███╗███████║   ██║
+██╔══██╗██║     ██╔══██║██║     ██╔═██╗ ██║     ██║██║   ██║██╔══██║   ██║
+██████╔╝███████╗██║  ██║╚██████╗██║  ██╗███████╗██║╚██████╔╝██║  ██║   ██║
+╚═════╝ ╚══════╝╚═╝  ╚═╝ ╚═════╝╚═╝  ╚═╝╚══════╝╚═╝ ╚═════╝ ╚═╝  ╚═╝   ╚═╝"""
+
+BANNER_WIDTH = max(len(line) for line in BANNER.splitlines())
 
 SEVERITY_STYLE = {
     "critical": "bold red",
@@ -62,7 +60,7 @@ def gradient_text(text: str) -> Text:
 
 def print_banner(console: Console) -> None:
     """Print the gradient banner; skip silently when the console is narrow."""
-    if console.width < 70:
+    if console.width < BANNER_WIDTH:
         return
     console.print(gradient_text(BANNER))
 
