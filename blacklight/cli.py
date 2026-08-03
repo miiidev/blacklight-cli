@@ -3,6 +3,7 @@
 import os
 import subprocess
 import sys
+from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -54,30 +55,50 @@ def scan(
     timeout: int = typer.Option(30, "--timeout", help="Per-host nmap scan timeout in seconds."),
 ) -> None:
     """Scan targets for vulnerable services and report findings."""
+    raise typer.Exit(code=execute_scan(
+        list(target),
+        ports=ports,
+        timeout=timeout,
+        no_cache=no_cache,
+        output=output,
+        fmt=fmt,
+        permission_granted=i_have_permission,
+        confirm=lambda message: typer.confirm(message),
+    ))
+
+
+def execute_scan(
+    targets: list[str], *,
+    ports: str, timeout: int, no_cache: bool,
+    output: Path | None, fmt: str,
+    permission_granted: bool, confirm: Callable[[str], bool],
+) -> int:
+    """Verify targets under guardrails, run the scan pipeline, log, render,
+    and export. Returns the process exit code (0 or 1)."""
     paths.ensure_dirs()
-    verdict = guardrails.verify_targets(list(target), i_have_permission)
+    verdict = guardrails.verify_targets(targets, permission_granted)
     for blocked in verdict.blocked:
         console.print(f"[red]Blocked:[/] {blocked} is not a private address. "
                       "Pass --i-have-permission to allow scanning non-private targets.")
     if verdict.needs_confirmation:
         names = ", ".join(verdict.needs_confirmation)
-        if not typer.confirm(f"Target(s) {names} are public. "
-                             "Are you authorized to scan them?"):
+        if not confirm(f"Target(s) {names} are public. "
+                       "Are you authorized to scan them?"):
             console.print("[yellow]Aborted.[/]")
-            raise typer.Exit(code=1)
+            return 1
     targets = verdict.allowed + verdict.needs_confirmation
     if not targets:
         console.print("[red]No scannable targets.[/]")
-        raise typer.Exit(code=1)
+        return 1
     if scanner.find_nmap() is None:
         console.print("[red]nmap not found.[/] Install it with one of:\n"
                       "  apt:   sudo apt install nmap\n"
                       "  brew:  brew install nmap\n"
                       "  choco: choco install nmap")
-        raise typer.Exit(code=1)
+        return 1
     if fmt not in ("html", "markdown", "json"):
         console.print("[red]Invalid format.[/] Choose html, markdown, or json.")
-        raise typer.Exit(code=1)
+        return 1
     if output is not None and fmt == "html" and output.suffix in (".md", ".json"):
         fmt = "markdown" if output.suffix == ".md" else "json"
 
@@ -91,16 +112,17 @@ def scan(
         ValueError,
     ) as exc:
         console.print(f"[red]Scan failed:[/] {exc}")
-        raise typer.Exit(code=1)
-    _log_scan(targets, i_have_permission, result["meta"])
+        return 1
+    _log_scan(targets, permission_granted, result["meta"])
     render_terminal(result["findings"], result["meta"])
     if output is not None:
         try:
             export_report(result["findings"], result["meta"], fmt, output)
         except (OSError, ValueError) as exc:
             console.print(f"[red]Report export failed:[/] {exc}")
-            raise typer.Exit(code=1)
+            return 1
         console.print(f"Report written to [bold]{output}[/]")
+    return 0
 
 
 @app.command()
@@ -116,22 +138,40 @@ def web(
     timeout: int = typer.Option(30, "--timeout", help="HTTP request timeout in seconds."),
 ) -> None:
     """Scan a web application for misconfigurations and injection flaws."""
+    raise typer.Exit(code=execute_web(
+        url,
+        timeout=timeout,
+        no_cache=no_cache,
+        output=output,
+        fmt=fmt,
+        permission_granted=i_have_permission,
+        confirm=lambda message: typer.confirm(message),
+    ))
+
+
+def execute_web(
+    url: str, *,
+    timeout: int, no_cache: bool,
+    output: Path | None, fmt: str,
+    permission_granted: bool, confirm: Callable[[str], bool],
+) -> int:
+    """Same shape as execute_scan for web targets."""
     paths.ensure_dirs()
     url = guardrails.normalize_web_url(url)
-    verdict = guardrails.verify_web_target(url, i_have_permission)
+    verdict = guardrails.verify_web_target(url, permission_granted)
     for blocked in verdict.blocked:
         console.print(f"[red]Blocked:[/] {blocked} must be an http(s) URL for a private "
                       "host, or pass --i-have-permission for public hosts.")
     if verdict.needs_confirmation:
-        if not typer.confirm(f"Target {url} is public. Are you authorized to scan it?"):
+        if not confirm(f"Target {url} is public. Are you authorized to scan it?"):
             console.print("[yellow]Aborted.[/]")
-            raise typer.Exit(code=1)
+            return 1
     if not (verdict.allowed or verdict.needs_confirmation):
         console.print("[red]No scannable targets.[/]")
-        raise typer.Exit(code=1)
+        return 1
     if fmt not in ("html", "markdown", "json"):
         console.print("[red]Invalid format.[/] Choose html, markdown, or json.")
-        raise typer.Exit(code=1)
+        return 1
     if output is not None and fmt == "html" and output.suffix in (".md", ".json"):
         fmt = "markdown" if output.suffix == ".md" else "json"
 
@@ -145,8 +185,8 @@ def web(
         ValueError,
     ) as exc:
         console.print(f"[red]Web scan failed:[/] {exc}")
-        raise typer.Exit(code=1)
-    _log_web_scan(url, i_have_permission, result.meta)
+        return 1
+    _log_web_scan(url, permission_granted, result.meta)
     render_terminal([], {}, web_findings=result.findings, web_meta=result.meta)
     if output is not None:
         try:
@@ -154,8 +194,9 @@ def web(
                           web_findings=result.findings, web_meta=result.meta)
         except (OSError, ValueError) as exc:
             console.print(f"[red]Report export failed:[/] {exc}")
-            raise typer.Exit(code=1)
+            return 1
         console.print(f"Report written to [bold]{output}[/]")
+    return 0
 
 
 @app.command()

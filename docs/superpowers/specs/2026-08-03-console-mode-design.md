@@ -190,8 +190,8 @@ to the `execute_scan` kwargs; TARGET becomes the target(s); PERMISSION →
   `scanner.scan_hosts` + fake `NvdClient` + `enrichment` (patterns from
   existing tests): blocked public target without permission (no scan call,
   code 1); public + `permission_granted=True` + `confirm->False` aborts;
-  `confirm->True` proceeds; `permission_granted=True` skips confirm; private
-  target unaffected; export path writes file when OUTPUT set.
+  `confirm->True` proceeds; private targets never prompt; export path writes
+  file when OUTPUT set.
 - REPL smoke (non-tty): feed `modules\nuse scan\nset TARGET 192.168.1.10\nrun\nback\nexit\n` with monkeypatched `run` path so it does no network — assets prompt text and final exit code 0.
 - Full existing suite (149 tests) stays green.
 - Manual smoke: `blacklight`, `blacklight console`, `echo "exit" | blacklight console`, tab-completion in a real terminal.
