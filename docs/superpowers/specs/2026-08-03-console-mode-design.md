@@ -151,8 +151,9 @@ to the `execute_scan` kwargs; TARGET becomes the target(s); PERMISSION →
     `blacklight (scan) > ` (module active, purple).
   - tab completion for command names, module names, and option keys.
   - history persisted at `~/.blacklight/console_history`.
-- On first start: print `theme.print_banner(console)` then header
-  `blacklight-cli v0.2.0 — 2 modules loaded (scan, web)` + "Type 'help'…".
+- The app callback prints the banner (once, for every invocation); the
+  console then prints the header `blacklight-cli v0.2.0 — 2 modules loaded
+  (scan, web)` + "Type 'help'…".
 - `patch_stdout` wraps the rich terminal output during `run` so the prompt
   line redraws cleanly.
 - Errors during a command print a `[red]` line and return to the prompt

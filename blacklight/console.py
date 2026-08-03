@@ -8,6 +8,9 @@ from typing import Callable, TextIO
 
 from rich.console import Console
 
+from blacklight import __version__, paths
+from blacklight import theme
+
 
 @dataclass(frozen=True)
 class Option:
@@ -233,3 +236,79 @@ class CommandRunner:
         else:
             code = self._execute_web(targets[0], **kwargs)
         console.print("[green]Done.[/]" if code == 0 else "[red]Done with errors.[/]")
+
+
+class ConsoleApp:
+    """REPL loop: interactive (prompt_toolkit) or piped (plain input)."""
+
+    def __init__(
+        self,
+        *,
+        execute_scan: Callable[..., int],
+        execute_web: Callable[..., int],
+        confirm: Callable[[str], bool] | None = None,
+    ) -> None:
+        self._confirm = confirm or self._confirm_plain
+        self.runner = CommandRunner(
+            execute_scan=execute_scan,
+            execute_web=execute_web,
+            confirm=self._confirm,
+        )
+
+    def run(self) -> int:
+        paths.ensure_dirs()
+        self._print_header()
+        if sys.stdin.isatty():
+            self._run_interactive()
+        else:
+            self._run_piped()
+        return 0
+
+    def _print_header(self) -> None:
+        names = ", ".join(self.runner.state.modules)
+        console = Console()
+        console.print(f"[bold {theme.ACCENT}]blacklight-cli[/] v{__version__} - "
+                      f"{len(self.runner.state.modules)} modules loaded ({names})")
+        console.print("Type 'help' for commands.")
+
+    def _confirm_plain(self, message: str) -> bool:
+        answer = input(f"{message} [y/N]: ")
+        return answer.strip().lower() in ("y", "yes")
+
+    def _run_piped(self) -> None:
+        for line in sys.stdin:
+            if self.runner.execute(line, sys.stdout):
+                break
+
+    def _run_interactive(self) -> None:
+        from prompt_toolkit import HTML, PromptSession
+        from prompt_toolkit.completion import WordCompleter
+        from prompt_toolkit.history import FileHistory
+        from prompt_toolkit.patch_stdout import patch_stdout
+
+        words = [
+            "help", "modules", "use", "show", "options", "set", "unset",
+            "run", "back", "exit", "quit",
+        ]
+        for module in self.runner.state.modules.values():
+            words.extend([module.name, *module.options])
+        session = PromptSession(
+            completer=WordCompleter(words, ignore_case=True),
+            history=FileHistory(str(paths.CONSOLE_HISTORY)),
+        )
+        with patch_stdout():
+            while True:
+                try:
+                    line = session.prompt(HTML(self._prompt_html()))
+                except (EOFError, KeyboardInterrupt):
+                    break
+                if self.runner.execute(line, sys.stdout):
+                    break
+        print()
+
+    def _prompt_html(self) -> str:
+        active = self.runner.state.active
+        if active is None:
+            return "<ansicyan>blacklight</ansicyan> > "
+        return (f"<ansicyan>blacklight</ansicyan> "
+                f"<ansipurple>({active})</ansipurple> > ")

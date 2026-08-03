@@ -169,3 +169,41 @@ def test_empty_and_blank_lines_are_noops():
     runner = make_runner()
     assert runner.execute("", io.StringIO()) is False
     assert runner.execute("   ", io.StringIO()) is False
+
+
+from typer.testing import CliRunner
+
+from blacklight.cli import app
+
+runner = CliRunner()
+
+
+def test_console_command_piped_session(monkeypatch):
+    seen = []
+
+    def fake_scan(targets, **kwargs):
+        seen.append((targets, kwargs))
+        return 0
+
+    monkeypatch.setattr("blacklight.cli.execute_scan", fake_scan)
+    result = runner.invoke(
+        app, ["console"],
+        input="use scan\nset TARGET 192.168.1.10\nrun\nexit\n",
+    )
+    assert result.exit_code == 0
+    assert "modules loaded (scan, web)" in result.output
+    assert "Type 'help'" in result.output
+    assert "Using module scan" in result.output
+    assert len(seen) == 1
+    targets, kwargs = seen[0]
+    assert targets == ["192.168.1.10"]
+    assert kwargs["permission_granted"] is False
+
+
+def test_bare_invocation_enters_console(monkeypatch):
+    monkeypatch.setattr("blacklight.cli.execute_scan", lambda *a, **k: 0)
+    result = runner.invoke(app, [], input="modules\nexit\n")
+    assert result.exit_code == 0
+    assert "██████╗" in result.output
+    assert "modules loaded" in result.output
+    assert "scan" in result.output

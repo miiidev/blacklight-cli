@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "blacklight-cli"
-version = "0.1.0"
+version = "0.2.0"
 description = "Network vulnerability scanner: nmap service detection + NVD CVE matching with EPSS/KEV enrichment"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -15,6 +15,7 @@ dependencies = [
     "rich>=13.7",
     "jinja2>=3.1",
     "requests>=2.31",
+    "prompt_toolkit>=3",
 ]
 
 [project.optional-dependencies]

@@ -35,10 +35,14 @@ app = typer.Typer(
 )
 
 
-@app.callback()
-def _show_banner() -> None:
-    """Show the brand banner before every subcommand invocation."""
+@app.callback(invoke_without_command=True)
+def _entry(ctx: typer.Context) -> None:
+    """Show the brand banner, then run the console when no subcommand was given."""
     theme.print_banner(console)
+    if ctx.invoked_subcommand is None:
+        from blacklight.console import ConsoleApp
+
+        ConsoleApp(execute_scan=execute_scan, execute_web=execute_web).run()
 
 
 @app.command()
@@ -197,6 +201,14 @@ def execute_web(
             return 1
         console.print(f"Report written to [bold]{output}[/]")
     return 0
+
+
+@app.command("console")
+def _console_command() -> None:
+    """Start an interactive scan console (same as running 'blacklight' bare)."""
+    from blacklight.console import ConsoleApp
+
+    ConsoleApp(execute_scan=execute_scan, execute_web=execute_web).run()
 
 
 @app.command()
