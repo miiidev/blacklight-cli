@@ -323,3 +323,60 @@ def diff_for_target(target: str, *, since: str | None = None) -> DiffResult | No
         score_before=before, score_after=after, delta=delta,
         delta_bucket=bucket,
     )
+
+
+@dataclass
+class TrendPoint:
+    scan_id: int
+    scanned_at: str
+    score: float
+
+
+def trend_for_target(target: str, *, host: str | None = None,
+                     limit: int = 50) -> list[TrendPoint] | None:
+    """Oldest-first risk scores per scan of target; None if never scanned.
+
+    Network scans score as the max host_risk_score across the scan's hosts
+    (or a single host when host is given). Scans without findings score 0.0.
+    """
+    kind = kind_for_target(target)
+    if kind is None:
+        return None
+    conn = _connect()
+    try:
+        scan_rows = conn.execute(
+            "SELECT id, scanned_at FROM scans WHERE kind = ? AND target = ?"
+            " ORDER BY scanned_at DESC, id DESC LIMIT ?",
+            (kind, target, limit),
+        ).fetchall()
+        points = []
+        for sr in scan_rows:
+            find_rows = conn.execute(
+                "SELECT host, severity, epss, in_kev FROM findings"
+                " WHERE scan_id = ? AND (? IS NULL OR host = ?)",
+                (sr["id"], host, host),
+            ).fetchall()
+            if kind == "scan":
+                by_host: dict[str, list[Finding]] = {}
+                for fr in find_rows:
+                    by_host.setdefault(fr["host"], []).append(
+                        Finding(host=fr["host"], port=0, service="", version="",
+                                cpe="", cve_id="", description="",
+                                cvss_score=None, severity=fr["severity"],
+                                fixed_version=None, epss=fr["epss"],
+                                in_kev=bool(fr["in_kev"])))
+                score = (max(host_risk_score(rows) for rows in by_host.values())
+                         if by_host else 0.0)
+            else:
+                findings = [
+                    WebFinding(url="", category="", detail="",
+                               severity=fr["severity"], evidence="")
+                    for fr in find_rows
+                ]
+                score = web_risk_score(findings)
+            points.append(TrendPoint(sr["id"], sr["scanned_at"],
+                                     round(score, 1)))
+        points.reverse()
+        return points
+    finally:
+        conn.close()

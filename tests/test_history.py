@@ -9,6 +9,7 @@ from blacklight.history import (
     latest_scan,
     list_recent,
     record_scan,
+    trend_for_target,
 )
 from blacklight.web.models import WebFinding
 
@@ -221,3 +222,59 @@ def test_diff_since_selects_older_baseline():
     assert result.selected_id == latest_scan("scan", "192.168.1.10").id
     assert [r.cve_id for r in result.new] == ["CVE-2026-0003"]
     assert [r.cve_id for r in result.fixed] == ["CVE-2026-0001"]
+
+
+def test_trend_network_max_host_score_oldest_first():
+    _record_scan_at("scan", "192.168.1.0/24", "2026-08-01T00:00:00+00:00",
+                    [net_finding(severity="medium")])
+    _record_scan_at("scan", "192.168.1.0/24", "2026-08-02T00:00:00+00:00",
+                    [net_finding(severity="low"),
+                     net_finding(host="192.168.1.20", severity="critical",
+                                 in_kev=True, epss=0.9)])
+    points = trend_for_target("192.168.1.0/24")
+    assert [p.scanned_at for p in points] == [
+        "2026-08-01T00:00:00+00:00", "2026-08-02T00:00:00+00:00"]
+    assert points[0].score < points[1].score
+
+
+def test_trend_host_filter_limits_to_one_host():
+    _record_scan_at("scan", "192.168.1.0/24", "2026-08-02T00:00:00+00:00",
+                    [net_finding(severity="low"),
+                     net_finding(host="192.168.1.20", severity="critical",
+                                 in_kev=True, epss=0.9)])
+    points = trend_for_target("192.168.1.0/24", host="192.168.1.20")
+    assert len(points) == 1
+    assert points[0].score == 39.0
+
+
+def test_trend_clean_network_scan_scores_zero():
+    _record_scan_at("scan", "192.168.1.10", "2026-08-01T00:00:00+00:00", [])
+    points = trend_for_target("192.168.1.10")
+    assert len(points) == 1
+    assert points[0].score == 0.0
+
+
+def test_trend_web_uses_web_risk_score():
+    f1 = WebFinding(url="https://example.com", category="missing_headers",
+                    detail="A", severity="medium", evidence="")
+    _record_scan_at("web", "https://example.com", "2026-08-01T00:00:00+00:00", [f1])
+    _record_scan_at("web", "https://example.com", "2026-08-02T00:00:00+00:00", [])
+    points = trend_for_target("https://example.com")
+    assert points[0].score == 4.0
+    assert points[1].score == 0.0
+
+
+def test_trend_limit_caps_points():
+    _record_scan_at("scan", "192.168.1.10", "2026-08-01T00:00:00+00:00",
+                    [net_finding()])
+    _record_scan_at("scan", "192.168.1.10", "2026-08-02T00:00:00+00:00",
+                    [net_finding()])
+    _record_scan_at("scan", "192.168.1.10", "2026-08-03T00:00:00+00:00",
+                    [net_finding()])
+    points = trend_for_target("192.168.1.10", limit=2)
+    assert len(points) == 2
+    assert points[0].scanned_at == "2026-08-02T00:00:00+00:00"
+
+
+def test_trend_unknown_target_returns_none():
+    assert trend_for_target("10.0.0.99") is None
