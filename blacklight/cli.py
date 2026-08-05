@@ -1,6 +1,7 @@
 """blacklight-cli entry point: scan command with authorization guardrails."""
 
 import os
+import sqlite3
 import subprocess
 import sys
 from collections.abc import Callable
@@ -12,7 +13,7 @@ import typer
 from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 
-from blacklight import __version__, paths
+from blacklight import __version__, history, paths
 from blacklight import theme
 from blacklight import enrichment, guardrails, scanner
 from blacklight.cve_matcher import Finding, NvdClient, build_findings
@@ -118,6 +119,12 @@ def execute_scan(
         console.print(f"[red]Scan failed:[/] {exc}")
         return 1
     _log_scan(targets, permission_granted, result["meta"])
+    try:
+        history.record_scan("scan", ", ".join(sorted(targets)),
+                            permission_granted, result["meta"],
+                            result["findings"])
+    except (OSError, sqlite3.Error) as exc:
+        console.print(f"[yellow]Could not record scan history:[/] {exc}")
     render_terminal(result["findings"], result["meta"])
     if output is not None:
         try:
@@ -191,6 +198,11 @@ def execute_web(
         console.print(f"[red]Web scan failed:[/] {exc}")
         return 1
     _log_web_scan(url, permission_granted, result.meta)
+    try:
+        history.record_scan("web", url, permission_granted,
+                            result.meta, result.findings)
+    except (OSError, sqlite3.Error) as exc:
+        console.print(f"[yellow]Could not record scan history:[/] {exc}")
     render_terminal([], {}, web_findings=result.findings, web_meta=result.meta)
     if output is not None:
         try:
@@ -272,6 +284,88 @@ def _log_web_scan(url: str, permission: bool, meta: dict) -> None:
     )
     with paths.SCAN_LOG.open("a", encoding="utf-8") as fh:
         fh.write(line)
+
+
+history_app = typer.Typer(help="Scan history, diffs, and risk trends.")
+
+
+@history_app.callback(invoke_without_command=True)
+def _history_entry(ctx: typer.Context) -> None:
+    """List recent scans when no subcommand is given."""
+    if ctx.invoked_subcommand is None:
+        raise typer.Exit(code=_history_list())
+
+
+@history_app.command()
+def diff(
+    target: str = typer.Argument(..., help="Target key as stored (hosts or URL)."),
+    since: str | None = typer.Option(
+        None, "--since",
+        help="Diff against the newest scan at/before Nd or YYYY-MM-DD."),
+    verbose: bool = typer.Option(
+        False, "--verbose", help="List unchanged findings too."),
+) -> None:
+    """Show what changed between the latest scan of TARGET and its previous scan."""
+    raise typer.Exit(code=_history_diff(target, since, verbose))
+
+
+@history_app.command()
+def trend(
+    target: str = typer.Argument(..., help="Target key as stored (hosts or URL)."),
+    host: str | None = typer.Option(
+        None, "--host", help="Filter the trend to one host (network scans)."),
+    limit: int = typer.Option(
+        50, "--limit", help="Number of recent scans to include."),
+) -> None:
+    """Show the risk-score history for TARGET, oldest first."""
+    raise typer.Exit(code=_history_trend(target, host, limit))
+
+
+app.add_typer(history_app, name="history")
+
+
+def _history_list() -> int:
+    try:
+        rows = history.list_recent()
+    except sqlite3.Error as exc:
+        console.print(f"[red]History database error:[/] {exc}")
+        return 1
+    history.render_list(rows, console)
+    return 0
+
+
+def _history_diff(target: str, since: str | None, verbose: bool) -> int:
+    try:
+        result = history.diff_for_target(target, since=since)
+    except ValueError as exc:
+        console.print(f"[red]{exc}[/]")
+        console.print("[red]Usage: history diff <target> "
+                      "[--since Nd|YYYY-MM-DD] [--verbose][/]")
+        return 1
+    except sqlite3.Error as exc:
+        console.print(f"[red]History database error:[/] {exc}")
+        return 1
+    if result is None:
+        console.print(f"[yellow]No scans of {target} yet.[/]")
+        return 0
+    history.render_diff(result, console, verbose=verbose)
+    return 0
+
+
+def _history_trend(target: str, host: str | None, limit: int) -> int:
+    if limit < 1:
+        console.print("[red]LIMIT must be a positive integer.[/]")
+        return 1
+    try:
+        points = history.trend_for_target(target, host=host, limit=limit)
+    except sqlite3.Error as exc:
+        console.print(f"[red]History database error:[/] {exc}")
+        return 1
+    if points is None:
+        console.print(f"[yellow]No scans of {target} yet.[/]")
+        return 0
+    history.render_trend(points, console, target=target, host=host)
+    return 0
 
 
 def main() -> None:

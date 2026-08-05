@@ -341,3 +341,120 @@ def test_execute_web_exports_report(monkeypatch, tmp_path, capsys):
     assert code == 0
     assert out.exists()
     assert "Report written to" in capsys.readouterr().out
+
+
+def test_execute_scan_records_history(monkeypatch, tmp_path):
+    records = [ScanRecord(host="192.168.1.10", port=22, protocol="tcp",
+                          service="OpenSSH", version="9.6p1")]
+    monkeypatch.setattr("blacklight.cli.scanner.scan_hosts", lambda *a, **k: records)
+    monkeypatch.setattr("blacklight.cli.scanner.find_nmap", lambda: "nmap")
+    monkeypatch.setattr("blacklight.cli.os.environ", {})
+    monkeypatch.setattr("blacklight.cli.paths.CACHE_DIR", tmp_path)
+    monkeypatch.setattr("blacklight.cli.paths.SCAN_LOG", tmp_path / "scan.log")
+
+    class FakeClient:
+        def __init__(self, *a, **k):
+            pass
+
+        def lookup(self, cpe):
+            return []
+
+    monkeypatch.setattr("blacklight.cli.NvdClient", FakeClient)
+    monkeypatch.setattr("blacklight.cli.enrichment.enrich_findings",
+                        lambda findings, **k: findings)
+    from blacklight import history
+    assert history.list_recent() == []
+    code = execute_scan(["192.168.1.10"], ports="22", timeout=30, no_cache=False,
+                        output=None, fmt="html",
+                        permission_granted=False, confirm=never_confirm)
+    assert code == 0
+    rows = history.list_recent()
+    assert len(rows) == 1
+    assert rows[0].kind == "scan"
+    assert rows[0].target == "192.168.1.10"
+    assert rows[0].hosts == 1
+    assert rows[0].findings_count == 0
+
+
+def test_execute_web_records_history(monkeypatch, tmp_path):
+    monkeypatch.setattr("blacklight.cli.run_web_scan",
+                        lambda *a, **k: SimpleNamespace(findings=[], meta=WEB_META))
+    monkeypatch.setattr("blacklight.cli.paths.CACHE_DIR", tmp_path)
+    monkeypatch.setattr("blacklight.cli.paths.SCAN_LOG", tmp_path / "scan.log")
+    from blacklight import history
+    code = execute_web("http://127.0.0.1", timeout=30, no_cache=False,
+                       output=None, fmt="html",
+                       permission_granted=False, confirm=never_confirm)
+    assert code == 0
+    rows = history.list_recent()
+    assert len(rows) == 1
+    assert rows[0].kind == "web"
+    assert rows[0].target == "http://127.0.0.1"
+
+
+def test_history_list_after_scan(monkeypatch, tmp_path):
+    from blacklight import history
+    history.record_scan("scan", "192.168.1.10", False, {
+        "hosts_scanned": 1, "services_found": 1, "findings_count": 0,
+        "generated": "2026-08-04T10:00:00+00:00",
+    }, [])
+    result = runner.invoke(app, ["history"], env={"COLUMNS": "200"})
+    assert result.exit_code == 0
+    assert "192.168.1.10" in result.output
+
+
+def test_history_list_empty_exits_zero():
+    result = runner.invoke(app, ["history"])
+    assert result.exit_code == 0
+    assert "No scan history yet" in result.output
+
+
+def test_history_diff_no_previous_scan_exits_zero():
+    from blacklight import history
+    history.record_scan("scan", "192.168.1.10", False, {
+        "hosts_scanned": 1, "services_found": 1, "findings_count": 0,
+        "generated": "2026-08-04T10:00:00+00:00",
+    }, [])
+    result = runner.invoke(app, ["history", "diff", "192.168.1.10"])
+    assert result.exit_code == 0
+    assert "No previous scan of 192.168.1.10" in result.output
+
+
+def test_history_diff_unknown_target_exits_zero():
+    result = runner.invoke(app, ["history", "diff", "10.0.0.99"])
+    assert result.exit_code == 0
+    assert "No scans of 10.0.0.99 yet." in result.output
+
+
+def test_history_diff_bad_since_exits_one():
+    result = runner.invoke(app, ["history", "diff", "10.0.0.99", "--since", "nope"])
+    assert result.exit_code == 1
+    assert "invalid --since value: nope" in result.output
+
+
+def test_history_trend_unknown_target_exits_zero():
+    result = runner.invoke(app, ["history", "trend", "10.0.0.99"])
+    assert result.exit_code == 0
+    assert "No scans of 10.0.0.99 yet." in result.output
+
+
+def test_history_trend_bad_limit_exits_one():
+    result = runner.invoke(app, ["history", "trend", "10.0.0.99", "--limit", "0"])
+    assert result.exit_code == 1
+    assert "LIMIT must be a positive integer" in result.output
+
+
+def test_history_corrupt_db_exits_one(monkeypatch, tmp_path):
+    bad = tmp_path / "bad.db"
+    bad.write_bytes(b"this is not a sqlite database")
+    monkeypatch.setattr("blacklight.paths.HISTORY_DB", bad)
+    result = runner.invoke(app, ["history"])
+    assert result.exit_code == 1
+    assert "History database error" in result.output
+
+
+def test_history_help_lists_subcommands():
+    result = runner.invoke(app, ["history", "--help"])
+    assert result.exit_code == 0
+    assert "diff" in result.output
+    assert "trend" in result.output

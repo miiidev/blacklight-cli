@@ -292,6 +292,8 @@ def diff_for_target(target: str, *, since: str | None = None) -> DiffResult | No
     Returns None when the target has no recorded scans at all. When the
     latest scan has no predecessor, baseline_id is None.
     """
+    if since is not None:
+        _parse_since(since)
     kind = kind_for_target(target)
     if kind is None:
         return None
