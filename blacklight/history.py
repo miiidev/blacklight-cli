@@ -4,7 +4,10 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 
-from blacklight import paths
+from rich.console import Console
+from rich.table import Table
+
+from blacklight import paths, theme
 from blacklight.cve_matcher import Finding
 from blacklight.scoring import host_risk_score, web_risk_score
 from blacklight.web.models import WebFinding
@@ -380,3 +383,115 @@ def trend_for_target(target: str, *, host: str | None = None,
         return points
     finally:
         conn.close()
+
+
+def _severity_cell(severity: str) -> str:
+    style = theme.SEVERITY_STYLE.get(severity, "dim")
+    return f"[{style}]{severity}[/]"
+
+
+def _finding_table(title: str, rows: list[FindingRecord], kind: str) -> Table:
+    table = Table(title=title)
+    if kind == "scan":
+        table.add_column("HOST")
+        table.add_column("PORT", justify="right")
+        table.add_column("SERVICE")
+        table.add_column("CVE ID")
+        table.add_column("SEVERITY")
+        table.add_column("CVSS", justify="right")
+        table.add_column("EPSS", justify="right")
+        table.add_column("KEV")
+        for r in rows:
+            table.add_row(
+                r.host or "", str(r.port or ""), r.service or "", r.cve_id or "",
+                _severity_cell(r.severity), f"{r.cvss or 0:.1f}",
+                f"{r.epss or 0:.2f}", "yes" if r.in_kev else "",
+            )
+    else:
+        table.add_column("CATEGORY")
+        table.add_column("DETAIL")
+        table.add_column("SEVERITY")
+        table.add_column("EVIDENCE")
+        table.add_column("CVE ID")
+        table.add_column("EPSS", justify="right")
+        table.add_column("KEV")
+        for r in rows:
+            table.add_row(
+                r.category or "", r.detail or "", _severity_cell(r.severity),
+                r.evidence or "", r.cve_id or "", f"{r.epss or 0:.2f}",
+                "yes" if r.in_kev else "",
+            )
+    return table
+
+
+def render_list(rows: list[ScanRecord], console: Console) -> None:
+    if not rows:
+        console.print("[yellow]No scan history yet. Run a scan first.[/]")
+        return
+    table = Table(title="Recent scans (newest first)")
+    table.add_column("ID", justify="right")
+    table.add_column("KIND")
+    table.add_column("TARGET")
+    table.add_column("PERMISSION")
+    table.add_column("HOSTS", justify="right")
+    table.add_column("SERVICES", justify="right")
+    table.add_column("FINDINGS", justify="right")
+    table.add_column("SCANNED AT (UTC)", justify="right")
+    for r in rows:
+        table.add_row(
+            str(r.id), r.kind, r.target,
+            "[green]yes[/]" if r.permission else "[red]no[/]",
+            str(r.hosts), str(r.services), str(r.findings_count), r.scanned_at,
+        )
+    console.print(table)
+
+
+def render_diff(result: DiffResult, console: Console, *,
+                verbose: bool = False) -> None:
+    if result.baseline_id is None:
+        console.print(f"[yellow]No previous scan of {result.target}.[/]")
+        return
+    console.print(f"{result.kind} target [bold]{result.target}[/] - "
+                  f"latest scan #{result.selected_id}")
+    sign = "+" if result.delta >= 0 else ""
+    bucket = {
+        "worsened": "[bold red]worsened[/]",
+        "improved": "[green]improved[/]",
+        "unchanged": "unchanged",
+    }[result.delta_bucket]
+    console.print(f"Risk score: {result.score_before:.1f} -> "
+                  f"{result.score_after:.1f} ({sign}{result.delta:.1f}, "
+                  f"{bucket})")
+    if result.new:
+        console.print(_finding_table("New findings", result.new, result.kind))
+    else:
+        console.print("[green]No new findings.[/]")
+    if result.fixed:
+        console.print(_finding_table("Fixed findings", result.fixed, result.kind))
+    else:
+        console.print("[green]No fixed findings.[/]")
+    if result.unchanged:
+        if verbose:
+            console.print(_finding_table("Unchanged findings",
+                                         result.unchanged, result.kind))
+        else:
+            console.print(f"[dim]Plus {len(result.unchanged)} unchanged "
+                          f"finding(s).[/]")
+
+
+def render_trend(points: list[TrendPoint], console: Console, *,
+                 target: str, host: str | None = None) -> None:
+    if not points:
+        console.print(f"[yellow]No scans of {target} yet.[/]")
+        return
+    title = f"Risk trend for {target}"
+    if host:
+        title += f" (host: {host})"
+    table = Table(title=title)
+    table.add_column("SCAN ID", justify="right")
+    table.add_column("SCANNED AT (UTC)", justify="right")
+    table.add_column("RISK SCORE")
+    for p in points:
+        table.add_row(str(p.scan_id), p.scanned_at, theme.risk_gauge(p.score))
+    console.print(table)
+    console.print("[dim]Oldest scan at the top; newest at the bottom.[/]")

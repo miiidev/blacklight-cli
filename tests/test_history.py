@@ -1,6 +1,7 @@
 import sqlite3
 
 import pytest
+from rich.console import Console
 
 from blacklight import paths
 from blacklight.cve_matcher import Finding
@@ -9,6 +10,9 @@ from blacklight.history import (
     latest_scan,
     list_recent,
     record_scan,
+    render_diff,
+    render_list,
+    render_trend,
     trend_for_target,
 )
 from blacklight.web.models import WebFinding
@@ -278,3 +282,62 @@ def test_trend_limit_caps_points():
 
 def test_trend_unknown_target_returns_none():
     assert trend_for_target("10.0.0.99") is None
+
+
+def test_render_list_empty_warns(capsys):
+    render_list([], Console(width=200))
+    assert "No scan history yet. Run a scan first." in capsys.readouterr().out
+
+
+def test_render_list_shows_columns_and_permission(capsys):
+    _record_scan_at("scan", "192.168.1.10", "2026-08-02T00:00:00+00:00",
+                    [net_finding()], permission=True)
+    render_list(list_recent(), Console(width=200))
+    out = capsys.readouterr().out
+    assert "KIND" in out
+    assert "192.168.1.10" in out
+    assert "yes" in out
+
+
+def test_render_diff_no_previous_warns(capsys):
+    _record_scan_at("scan", "192.168.1.10", "2026-08-01T00:00:00+00:00",
+                    [net_finding()])
+    render_diff(diff_for_target("192.168.1.10"), Console(width=200))
+    assert "No previous scan of 192.168.1.10" in capsys.readouterr().out
+
+
+def test_render_diff_shows_score_delta_and_findings(capsys):
+    low = net_finding(severity="low", in_kev=False, epss=0.0)
+    crit = net_finding(port=443, service="nginx", cve_id="CVE-2024-9999",
+                       severity="critical", in_kev=True, epss=0.9)
+    _record_scan_at("scan", "192.168.1.10", "2026-08-01T00:00:00+00:00", [low])
+    _record_scan_at("scan", "192.168.1.10", "2026-08-02T00:00:00+00:00",
+                    [low, crit])
+    render_diff(diff_for_target("192.168.1.10"), Console(width=200))
+    out = capsys.readouterr().out
+    assert "Risk score:" in out
+    assert "worsened" in out
+    assert "CVE-2024-9999" in out
+    assert "Plus 1 unchanged finding(s)" in out
+
+
+def test_render_diff_verbose_lists_unchanged(capsys):
+    low = net_finding(severity="low", in_kev=False, epss=0.0)
+    _record_scan_at("scan", "192.168.1.10", "2026-08-01T00:00:00+00:00", [low])
+    _record_scan_at("scan", "192.168.1.10", "2026-08-02T00:00:00+00:00", [low])
+    render_diff(diff_for_target("192.168.1.10"), Console(width=200), verbose=True)
+    out = capsys.readouterr().out
+    assert "Unchanged findings" in out
+    assert "OpenSSH" in out
+
+
+def test_render_trend_shows_gauge_and_scores(capsys):
+    _record_scan_at("scan", "192.168.1.10", "2026-08-01T00:00:00+00:00",
+                    [net_finding(severity="medium")])
+    _record_scan_at("scan", "192.168.1.10", "2026-08-02T00:00:00+00:00", [])
+    render_trend(trend_for_target("192.168.1.10"), Console(width=200),
+                 target="192.168.1.10")
+    out = capsys.readouterr().out
+    assert "Risk trend for 192.168.1.10" in out
+    assert "9.0" in out
+    assert "0.0" in out
