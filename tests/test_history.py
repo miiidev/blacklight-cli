@@ -1,8 +1,15 @@
 import sqlite3
 
+import pytest
+
 from blacklight import paths
 from blacklight.cve_matcher import Finding
-from blacklight.history import list_recent, record_scan
+from blacklight.history import (
+    diff_for_target,
+    latest_scan,
+    list_recent,
+    record_scan,
+)
 from blacklight.web.models import WebFinding
 
 NET_META = {
@@ -106,3 +113,111 @@ def test_list_recent_empty_returns_no_rows():
 def test_record_creates_db_at_paths_history_db():
     record_scan("scan", "x.local", False, NET_META, [])
     assert paths.HISTORY_DB.exists()
+
+
+def _record_scan_at(kind, target, generated, findings, permission=False):
+    meta = dict(NET_META) if kind == "scan" else dict(WEB_META)
+    meta["generated"] = generated
+    meta["findings_count"] = len(findings)
+    record_scan(kind, target, permission, meta, findings)
+
+
+def test_parse_since_forms():
+    from blacklight.history import _parse_since
+
+    assert _parse_since("2026-08-01") == "2026-08-01T23:59:59+00:00"
+    days = _parse_since("3d")
+    assert days.endswith("+00:00")
+    with pytest.raises(ValueError):
+        _parse_since("nope")
+    with pytest.raises(ValueError):
+        _parse_since("abc")
+
+
+def test_diff_identical_scans_have_no_changes():
+    _record_scan_at("scan", "192.168.1.10", "2026-08-01T00:00:00+00:00",
+                    [net_finding()])
+    _record_scan_at("scan", "192.168.1.10", "2026-08-02T00:00:00+00:00",
+                    [net_finding()])
+    result = diff_for_target("192.168.1.10")
+    assert result.new == []
+    assert result.fixed == []
+    assert len(result.unchanged) == 1
+    assert result.delta == 0.0
+    assert result.delta_bucket == "unchanged"
+    assert result.score_before == result.score_after
+
+
+def test_diff_reports_new_findings_and_worsened():
+    low = net_finding(severity="low", in_kev=False, epss=0.0)
+    _record_scan_at("scan", "192.168.1.10", "2026-08-01T00:00:00+00:00", [low])
+    _record_scan_at("scan", "192.168.1.10", "2026-08-02T00:00:00+00:00",
+                    [low, net_finding(port=443, service="nginx",
+                                      cve_id="CVE-2024-9999",
+                                      severity="critical", in_kev=True, epss=0.9)])
+    result = diff_for_target("192.168.1.10")
+    assert result.delta_bucket == "worsened"
+    assert result.delta > 0.05
+    assert [r.fingerprint for r in result.new] == [
+        "192.168.1.10|443|nginx|CVE-2024-9999"]
+    assert result.fixed == []
+    assert len(result.unchanged) == 1
+
+
+def test_diff_reports_fixed_findings_and_improved():
+    low = net_finding(severity="low", in_kev=False, epss=0.0)
+    crit = net_finding(port=443, service="nginx", cve_id="CVE-2024-9999",
+                       severity="critical", in_kev=True, epss=0.9)
+    _record_scan_at("scan", "192.168.1.10", "2026-08-01T00:00:00+00:00",
+                    [low, crit])
+    _record_scan_at("scan", "192.168.1.10", "2026-08-02T00:00:00+00:00", [low])
+    result = diff_for_target("192.168.1.10")
+    assert result.delta_bucket == "improved"
+    assert result.delta < -0.05
+    assert result.new == []
+    assert [r.fingerprint for r in result.fixed] == [
+        "192.168.1.10|443|nginx|CVE-2024-9999"]
+    assert len(result.unchanged) == 1
+
+
+def test_diff_web_scans():
+    f1 = WebFinding(url="https://example.com", category="missing_headers",
+                    detail="A", severity="low", evidence="")
+    f2 = WebFinding(url="https://example.com", category="missing_headers",
+                    detail="B", severity="high", evidence="")
+    _record_scan_at("web", "https://example.com", "2026-08-01T00:00:00+00:00", [f1])
+    _record_scan_at("web", "https://example.com", "2026-08-02T00:00:00+00:00", [f2])
+    result = diff_for_target("https://example.com")
+    assert result.kind == "web"
+    assert result.delta_bucket == "worsened"
+    assert result.delta == 9.0
+    assert [r.detail for r in result.new] == ["B"]
+    assert [r.detail for r in result.fixed] == ["A"]
+    assert result.unchanged == []
+
+
+def test_diff_no_previous_scan():
+    _record_scan_at("scan", "192.168.1.10", "2026-08-01T00:00:00+00:00",
+                    [net_finding()])
+    result = diff_for_target("192.168.1.10")
+    assert result.baseline_id is None
+    assert result.score_before is None
+    assert result.new == []
+    assert result.delta_bucket == "unchanged"
+
+
+def test_diff_unknown_target_returns_none():
+    assert diff_for_target("10.0.0.99") is None
+
+
+def test_diff_since_selects_older_baseline():
+    a = net_finding(port=22, cve_id="CVE-2026-0001")
+    b = net_finding(port=22, cve_id="CVE-2026-0002")
+    c = net_finding(port=22, cve_id="CVE-2026-0003")
+    _record_scan_at("scan", "192.168.1.10", "2025-12-30T00:00:00+00:00", [a])
+    _record_scan_at("scan", "192.168.1.10", "2026-01-02T00:00:00+00:00", [b])
+    _record_scan_at("scan", "192.168.1.10", "2026-01-15T00:00:00+00:00", [c])
+    result = diff_for_target("192.168.1.10", since="2026-01-01")
+    assert result.selected_id == latest_scan("scan", "192.168.1.10").id
+    assert [r.cve_id for r in result.new] == ["CVE-2026-0003"]
+    assert [r.cve_id for r in result.fixed] == ["CVE-2026-0001"]

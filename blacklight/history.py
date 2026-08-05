@@ -2,9 +2,11 @@
 
 import sqlite3
 from dataclasses import dataclass
+from datetime import date, datetime, timedelta, timezone
 
 from blacklight import paths
 from blacklight.cve_matcher import Finding
+from blacklight.scoring import host_risk_score, web_risk_score
 from blacklight.web.models import WebFinding
 
 SCHEMA = """
@@ -149,3 +151,175 @@ def list_recent(limit: int = 20) -> list[ScanRecord]:
         return [_row_to_record(row) for row in rows]
     finally:
         conn.close()
+
+
+@dataclass
+class DiffResult:
+    target: str
+    kind: str
+    selected_id: int
+    baseline_id: int | None
+    new: list[FindingRecord]
+    fixed: list[FindingRecord]
+    unchanged: list[FindingRecord]
+    score_before: float | None
+    score_after: float
+    delta: float
+    delta_bucket: str
+
+
+def kind_for_target(target: str) -> str | None:
+    """The kind ('scan' or 'web') of the most recent scan of this target."""
+    conn = _connect()
+    try:
+        row = conn.execute(
+            "SELECT kind FROM scans WHERE target = ?"
+            " ORDER BY scanned_at DESC, id DESC LIMIT 1",
+            (target,),
+        ).fetchone()
+        return row["kind"] if row else None
+    finally:
+        conn.close()
+
+
+def latest_scan(kind: str, target: str) -> ScanRecord | None:
+    """The most recent scan record of this kind+target, or None."""
+    conn = _connect()
+    try:
+        row = conn.execute(
+            "SELECT id, kind, target, permission, scanned_at, hosts, services,"
+            " findings_count FROM scans WHERE kind = ? AND target = ?"
+            " ORDER BY scanned_at DESC, id DESC LIMIT 1",
+            (kind, target),
+        ).fetchone()
+        return _row_to_record(row) if row else None
+    finally:
+        conn.close()
+
+
+def findings_for(scan_id: int) -> list[FindingRecord]:
+    """All stored findings of one scan, in insertion order."""
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            "SELECT fingerprint, host, port, service, cve_id, category, detail,"
+            " evidence, severity, cvss, epss, in_kev FROM findings"
+            " WHERE scan_id = ? ORDER BY id",
+            (scan_id,),
+        ).fetchall()
+        return [
+            FindingRecord(
+                fingerprint=r["fingerprint"], host=r["host"], port=r["port"],
+                service=r["service"], cve_id=r["cve_id"], category=r["category"],
+                detail=r["detail"], evidence=r["evidence"],
+                severity=r["severity"], cvss=r["cvss"], epss=r["epss"],
+                in_kev=bool(r["in_kev"]),
+            )
+            for r in rows
+        ]
+    finally:
+        conn.close()
+
+
+def _parse_since(since: str) -> str:
+    """'Nd' -> cutoff now-N days (UTC); 'YYYY-MM-DD' -> end of that day (UTC)."""
+    value = since.strip().lower()
+    if value.endswith("d"):
+        try:
+            days = int(value[:-1])
+        except ValueError as exc:
+            raise ValueError(f"invalid --since value: {since}") from exc
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        return cutoff.isoformat(timespec="seconds")
+    try:
+        date.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError(f"invalid --since value: {since}") from exc
+    return f"{value}T23:59:59+00:00"
+
+
+def _scan_before(kind: str, target: str, *, since: str | None = None,
+                 exclude_id: int) -> ScanRecord | None:
+    """Newest scan of kind+target excluding exclude_id, at/before cutoff."""
+    conn = _connect()
+    try:
+        sql = (
+            "SELECT id, kind, target, permission, scanned_at, hosts, services,"
+            " findings_count FROM scans WHERE kind = ? AND target = ? AND id != ?"
+        )
+        args: list = [kind, target, exclude_id]
+        if since is not None:
+            sql += " AND scanned_at <= ?"
+            args.append(_parse_since(since))
+        sql += " ORDER BY scanned_at DESC, id DESC LIMIT 1"
+        row = conn.execute(sql, args).fetchone()
+        return _row_to_record(row) if row else None
+    finally:
+        conn.close()
+
+
+def _network_score(rows: list[FindingRecord]) -> float:
+    findings = [
+        Finding(host=r.host or "", port=r.port or 0, service=r.service or "",
+                version="", cpe="", cve_id=r.cve_id or "", description="",
+                cvss_score=r.cvss, severity=r.severity, fixed_version=None,
+                epss=r.epss, in_kev=r.in_kev)
+        for r in rows
+    ]
+    return host_risk_score(findings)
+
+
+def _web_score(rows: list[FindingRecord]) -> float:
+    findings = [
+        WebFinding(url="", category=r.category or "", detail=r.detail or "",
+                   severity=r.severity, evidence=r.evidence or "",
+                   cve_id=r.cve_id or "", epss=r.epss, in_kev=r.in_kev)
+        for r in rows
+    ]
+    return web_risk_score(findings)
+
+
+def _score(kind: str, rows: list[FindingRecord]) -> float:
+    return _network_score(rows) if kind == "scan" else _web_score(rows)
+
+
+def diff_for_target(target: str, *, since: str | None = None) -> DiffResult | None:
+    """Diff the latest scan of target against its previous scan.
+
+    Returns None when the target has no recorded scans at all. When the
+    latest scan has no predecessor, baseline_id is None.
+    """
+    kind = kind_for_target(target)
+    if kind is None:
+        return None
+    latest = latest_scan(kind, target)
+    baseline = _scan_before(kind, target, since=since, exclude_id=latest.id)
+    selected = findings_for(latest.id)
+    after = _score(kind, selected)
+    if baseline is None:
+        return DiffResult(
+            target=target, kind=kind, selected_id=latest.id, baseline_id=None,
+            new=[], fixed=[], unchanged=[],
+            score_before=None, score_after=after, delta=0.0,
+            delta_bucket="unchanged",
+        )
+    base = findings_for(baseline.id)
+    before = _score(kind, base)
+    base_fps = {r.fingerprint for r in base}
+    sel_fps = {r.fingerprint for r in selected}
+    new = [r for r in selected if r.fingerprint not in base_fps]
+    fixed = [r for r in base if r.fingerprint not in sel_fps]
+    unchanged = [r for r in selected if r.fingerprint in base_fps]
+    delta = round(after - before, 1)
+    if delta > 0.05:
+        bucket = "worsened"
+    elif delta < -0.05:
+        bucket = "improved"
+    else:
+        bucket = "unchanged"
+    return DiffResult(
+        target=target, kind=kind, selected_id=latest.id, baseline_id=baseline.id,
+        new=new, fixed=fixed, unchanged=unchanged,
+        score_before=before, score_after=after, delta=delta,
+        delta_bucket=bucket,
+    )
