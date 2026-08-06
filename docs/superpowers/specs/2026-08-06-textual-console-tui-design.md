@@ -46,10 +46,11 @@ New package `blacklight/tui/`:
 | `app.py` | `BlacklightApp` (Textual `App`): binds keys, composes layout, owns the `CommandRunner`, launches workers |
 | `views.py` | Screen/widgets: modules sidebar, options table, findings/log panes, history screens, confirm modal |
 
-`BlacklightApp` holds a `CommandRunner` instance (reused from
-`blacklight/console.py`), so module/option state and `execute` semantics are
-unchanged and already-tested logic is not duplicated. A `Screen` (or screen
-stack) per area:
+`BlacklightApp` takes the same constructor parameters as the current
+`ConsoleApp` (`execute_scan`, `execute_web`, `confirm`) and builds its own
+`CommandRunner` from them (reused from `blacklight/console.py`), so
+module/option state and `execute` semantics are unchanged and already-tested
+logic is not duplicated. A `Screen` (or screen stack) per area:
 
 - **Main screen**: `Header` (title, version, active module), left `ListView`
   with the two modules, main `DataTable` of the active module's options
