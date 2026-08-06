@@ -3,7 +3,7 @@
 import contextlib
 
 from textual.app import ComposeResult
-from textual.containers import Center, Horizontal, Middle, Vertical
+from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen, Screen
 from textual.widgets import (
     Button,
@@ -438,6 +438,22 @@ class DetailScreen(Screen):
 class ConfirmModal(ModalScreen[bool]):
     """Yes/No modal shown when an engine asks for authorization."""
 
+    CSS = """
+    ConfirmModal {
+        align: center middle;
+    }
+    #confirm-box {
+        width: auto;
+        height: auto;
+        border: round $border;
+        padding: 1 2;
+    }
+    #confirm-buttons {
+        width: auto;
+        height: auto;
+    }
+    """
+
     BINDINGS = [("escape", "no", "No")]
 
     def __init__(self, message: str) -> None:
@@ -445,12 +461,11 @@ class ConfirmModal(ModalScreen[bool]):
         self._message = message
 
     def compose(self) -> ComposeResult:
-        with Center():
-            with Middle():
-                yield Label(self._message)
-                with Horizontal():
-                    yield Button("Yes", variant="primary", id="yes")
-                    yield Button("No", id="no")
+        with Vertical(id="confirm-box"):
+            yield Label(self._message)
+            with Horizontal(id="confirm-buttons"):
+                yield Button("Yes", variant="primary", id="yes")
+                yield Button("No", id="no")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         self.dismiss(event.button.id == "yes")

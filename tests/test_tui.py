@@ -209,6 +209,30 @@ def test_tui_run_progress_bar_determinate_during_run():
     asyncio.run(scenario())
 
 
+def test_confirm_modal_is_centered():
+    from blacklight.tui.views import ConfirmModal
+
+    app = make_app()
+
+    async def scenario():
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await app.push_screen(ConfirmModal("authorize?"))
+            await pilot.pause()
+            box = app.screen.query_one("#confirm-box")
+            assert box.region.x > 0  # not pinned to the left edge
+            assert box.region.x + box.region.width < app.screen.size.width
+            assert box.region.y > 0  # not pinned to the top edge
+            assert box.region.y + box.region.height < app.screen.size.height
+            assert box.region.center == (
+                app.screen.size.width // 2,
+                app.screen.size.height // 2,
+            )
+            await pilot.press("q")
+
+    asyncio.run(scenario())
+
+
 def test_confirm_bridge_blocks_until_answered():
     import threading
 
