@@ -3,7 +3,20 @@
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen, Screen
-from textual.widgets import DataTable, Footer, Header, Input, Label, ListItem, ListView
+from textual.widgets import (
+    Button,
+    DataTable,
+    Footer,
+    Header,
+    Input,
+    Label,
+    ListItem,
+    ListView,
+    Log,
+    ProgressBar,
+)
+
+from blacklight.console import module_run_args
 
 
 class MainScreen(Screen):
@@ -43,8 +56,12 @@ class MainScreen(Screen):
         if module is None:
             return
         for name, opt in module.options.items():
-            value = self.app.runner.state.values.get(name, opt.default)
-            table.add_row(name, value, opt.default, opt.help)
+            table.add_row(
+                name,
+                self.app.runner.state.current_value(name),
+                opt.default,
+                opt.help,
+            )
 
     def on_list_view_selected(self, event: ListView.Selected) -> None:
         if event.item is None:
@@ -109,3 +126,104 @@ class EditScreen(ModalScreen[str]):
 
     def action_cancel(self) -> None:
         self.dismiss(None)
+
+
+class RunScreen(Screen):
+    """Runs the active module in a worker; streams log + findings table."""
+
+    BINDINGS = [("q", "quit_app", "Quit"), ("escape", "back", "Back")]
+
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=False)
+        yield Label(id="run-title")
+        yield ProgressBar()
+        yield Log(id="run-log", highlight=False)
+        yield DataTable(id="findings")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        self.query_one(ProgressBar).update(total=None)
+        self.query_one("#findings", DataTable).add_columns(
+            "HOST", "PORT", "SERVICE", "CVE", "SEVERITY", "EPSS", "KEV"
+        )
+        self.run_worker(self._run_task, thread=True)
+
+    def _run_task(self) -> None:
+        error, targets, kwargs = module_run_args(self.app.runner.state)
+        if error:
+            self._set_title("Run failed")
+            self._log(f"{error}")
+            return
+        module = self.app.runner.state.active
+        self._set_title(f"Running {module} on {', '.join(targets)}")
+        self._log(f"Starting {module} scan of {', '.join(targets)} ...")
+        try:
+            kwargs["confirm"] = self.app.runner.confirm
+            if module == "scan":
+                code = self.app.runner.execute_scan(targets, **kwargs)
+            else:
+                code = self.app.runner.execute_web(targets[0], **kwargs)
+        except Exception as exc:
+            self._log(f"Scan failed: {exc}")
+            self._set_title("Run failed")
+            return
+        self._log("Done." if code == 0 else "Done with errors.")
+        self._show_findings(module, targets[0])
+
+    def _log(self, line: str) -> None:
+        self.app.call_from_thread(
+            self.query_one("#run-log", Log).write_line, line
+        )
+
+    def _set_title(self, title: str) -> None:
+        self.app.call_from_thread(
+            self.query_one("#run-title", Label).update, title
+        )
+
+    def _show_findings(self, kind: str, target: str) -> None:
+        def fill() -> None:
+            from blacklight import history
+            record = history.latest_scan(kind, target)
+            log = self.query_one("#run-log", Log)
+            if record is None:
+                log.write_line("No history entry recorded for this run.")
+                return
+            table = self.query_one("#findings", DataTable)
+            for rec in history.findings_for(record.id):
+                table.add_row(
+                    rec.host or "",
+                    "" if rec.port is None else str(rec.port),
+                    rec.service or "",
+                    rec.cve_id or "",
+                    rec.severity,
+                    "" if rec.epss is None else f"{rec.epss:.3f}",
+                    "KEV" if rec.in_kev else "",
+                )
+            log.write_line(f"{len(history.findings_for(record.id))} findings.")
+
+        self.app.call_from_thread(fill)
+
+    def action_back(self) -> None:
+        self.app.pop_screen()
+
+
+class ConfirmModal(ModalScreen[bool]):
+    """Yes/No modal shown when an engine asks for authorization."""
+
+    BINDINGS = [("escape", "no", "No")]
+
+    def __init__(self, message: str) -> None:
+        super().__init__()
+        self._message = message
+
+    def compose(self) -> ComposeResult:
+        yield Label(self._message)
+        with Horizontal():
+            yield Button("Yes", variant="primary", id="yes")
+            yield Button("No", id="no")
+
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        self.dismiss(event.button.id == "yes")
+
+    def action_no(self) -> None:
+        self.dismiss(False)

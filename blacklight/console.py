@@ -60,6 +60,49 @@ class ConsoleState:
     active: str | None = None
     values: dict[str, str] = field(default_factory=dict)
 
+    def active_module(self) -> Module | None:
+        if self.active is None:
+            return None
+        return self.modules[self.active]
+
+    def current_value(self, name: str) -> str:
+        if name in self.values:
+            return self.values[name]
+        module = self.active_module()
+        assert module is not None
+        return module.options[name].default
+
+
+def module_run_args(state: ConsoleState) -> tuple[str | None, list[str], dict]:
+    """Validate the active module and build run arguments.
+
+    Returns (error, targets, kwargs); error is None when valid.
+    """
+    module = state.active_module()
+    if module is None:
+        return "No module selected.", [], {}
+    try:
+        timeout = int(state.current_value("TIMEOUT"))
+    except ValueError:
+        return "TIMEOUT must be an integer.", [], {}
+    if timeout <= 0:
+        return "TIMEOUT must be a positive integer.", [], {}
+    target = state.current_value("TARGET").strip()
+    if not target:
+        return "TARGET not set.", [], {}
+    targets = [t for t in re.split(r"[\s,]+", target) if t]
+    output = state.current_value("OUTPUT").strip()
+    kwargs = {
+        "timeout": timeout,
+        "no_cache": state.current_value("NO_CACHE") == "true",
+        "output": Path(output) if output else None,
+        "fmt": state.current_value("FORMAT"),
+        "permission_granted": state.current_value("PERMISSION") == "true",
+    }
+    if module.name == "scan":
+        kwargs["ports"] = state.current_value("PORTS")
+    return None, targets, kwargs
+
 
 HELP_TEXT = """Commands:
   help                 Show this help
@@ -92,22 +135,10 @@ class CommandRunner:
         execute_web: Callable[..., int],
         confirm: Callable[[str], bool],
     ) -> None:
-        self._execute_scan = execute_scan
-        self._execute_web = execute_web
-        self._confirm = confirm
+        self.execute_scan = execute_scan
+        self.execute_web = execute_web
+        self.confirm = confirm
         self.state = ConsoleState(modules={"scan": SCAN_MODULE, "web": WEB_MODULE})
-
-    # -- helpers --------------------------------------------------------
-
-    def _active(self) -> Module | None:
-        if self.state.active is None:
-            return None
-        return self.state.modules[self.state.active]
-
-    def _current_value(self, name: str) -> str:
-        if name in self.state.values:
-            return self.state.values[name]
-        return self._active().options[name].default  # type: ignore[union-attr]
 
     # -- dispatch -------------------------------------------------------
 
@@ -167,18 +198,18 @@ class CommandRunner:
         if args != ["options"]:
             console.print("[red]Usage: show options[/]")
             return
-        module = self._active()
+        module = self.state.active_module()
         if module is None:
             console.print("[red]No module selected. Use 'use <module>' first.[/]")
             return
         console.print(f"Module: [bold]{module.name}[/] - {module.description}")
         console.print(f"{'OPTION':<10} {'CURRENT':<16} {'DEFAULT':<16} DESCRIPTION")
         for name, option in module.options.items():
-            console.print(f"{name:<10} {self._current_value(name):<16} "
+            console.print(f"{name:<10} {self.state.current_value(name):<16} "
                           f"{option.default:<16} {option.help}")
 
     def _set(self, args: list[str], console: Console) -> None:
-        module = self._active()
+        module = self.state.active_module()
         if module is None:
             console.print("[red]No module selected. Use 'use <module>' first.[/]")
             return
@@ -197,7 +228,7 @@ class CommandRunner:
         console.print(f"{name} => {self.state.values[name]}")
 
     def _unset(self, args: list[str], console: Console) -> None:
-        module = self._active()
+        module = self.state.active_module()
         if module is None:
             console.print("[red]No module selected. Use 'use <module>' first.[/]")
             return
@@ -215,41 +246,22 @@ class CommandRunner:
         if args:
             console.print("[red]Usage: run[/]")
             return
-        module = self._active()
-        if module is None:
-            console.print("[red]No module selected. Use 'use <module>' first.[/]")
+        error, targets, kwargs = module_run_args(self.state)
+        if error:
+            console.print(f"[red]{error}[/]")
             return
-        try:
-            timeout = int(self._current_value("TIMEOUT"))
-        except ValueError:
-            console.print("[red]TIMEOUT must be an integer.[/]")
-            return
-        if timeout <= 0:
-            console.print("[red]TIMEOUT must be a positive integer.[/]")
-            return
-        target = self._current_value("TARGET").strip()
-        if not target:
-            console.print("[red]TARGET not set.[/]")
-            return
-        targets = [t for t in re.split(r"[\s,]+", target) if t]
-        output = self._current_value("OUTPUT").strip()
-        kwargs = {
-            "timeout": timeout,
-            "no_cache": self._current_value("NO_CACHE") == "true",
-            "output": Path(output) if output else None,
-            "fmt": self._current_value("FORMAT"),
-            "permission_granted": self._current_value("PERMISSION") == "true",
-            "confirm": self._confirm,
-        }
+        module = self.state.active_module()
+        assert module is not None
+        kwargs["confirm"] = self.confirm
         if module.name == "scan":
-            kwargs["ports"] = self._current_value("PORTS")
-            code = self._execute_scan(targets, **kwargs)
+            code = self.execute_scan(targets, **kwargs)
         else:
             if len(targets) > 1:
                 console.print("[yellow]web accepts a single TARGET; "
                               "scanning the first only[/]")
-            code = self._execute_web(targets[0], **kwargs)
-        console.print("[green]Done.[/]" if code == 0 else "[red]Done with errors.[/]")
+            code = self.execute_web(targets[0], **kwargs)
+        console.print("[green]Done.[/]" if code == 0
+                      else "[red]Done with errors.[/]")
 
     def _history(self, args: list[str], console: Console) -> None:
         if not args:
@@ -334,7 +346,7 @@ class ConsoleApp:
         from blacklight.tui.app import BlacklightApp
 
         BlacklightApp(
-            execute_scan=self.runner._execute_scan,
-            execute_web=self.runner._execute_web,
+            execute_scan=self.runner.execute_scan,
+            execute_web=self.runner.execute_web,
             confirm=self._confirm,
         ).run()

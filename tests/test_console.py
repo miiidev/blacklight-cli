@@ -357,3 +357,39 @@ def test_console_trend_unknown_target_warns():
 def test_console_trend_usage_error():
     _, out = run_commands(["trend"])
     assert "Usage: trend <target>" in out
+
+
+def test_module_run_args_validation_errors():
+    from blacklight.console import ConsoleState, module_run_args, SCAN_MODULE
+
+    state = ConsoleState(modules={"scan": SCAN_MODULE})
+    error, targets, kwargs = module_run_args(state)
+    assert error == "No module selected."
+    state.active = "scan"
+    error, _, _ = module_run_args(state)
+    assert error == "TARGET not set."
+    state.values["TARGET"] = "192.168.1.10"
+    state.values["TIMEOUT"] = "abc"
+    error, _, _ = module_run_args(state)
+    assert error == "TIMEOUT must be an integer."
+    state.values["TIMEOUT"] = "0"
+    error, _, _ = module_run_args(state)
+    assert error == "TIMEOUT must be a positive integer."
+
+
+def test_module_run_args_builds_scan_kwargs():
+    from blacklight.console import ConsoleState, module_run_args, SCAN_MODULE
+
+    state = ConsoleState(modules={"scan": SCAN_MODULE})
+    state.active = "scan"
+    state.values["TARGET"] = "192.168.1.10, 192.168.1.11"
+    state.values["PERMISSION"] = "true"
+    state.values["NO_CACHE"] = "true"
+    error, targets, kwargs = module_run_args(state)
+    assert error is None
+    assert targets == ["192.168.1.10", "192.168.1.11"]
+    assert kwargs["timeout"] == 30
+    assert kwargs["no_cache"] is True
+    assert kwargs["permission_granted"] is True
+    assert kwargs["fmt"] == "html"
+    assert kwargs["ports"] == "1-1024"
