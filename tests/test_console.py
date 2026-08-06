@@ -330,6 +330,21 @@ def test_module_run_args_validation_errors():
     assert error == "TIMEOUT must be a positive integer."
 
 
+def test_run_interactive_falls_back_on_tui_failure(monkeypatch, capsys):
+    class BoomApp:
+        def __init__(self, *a, **k):
+            pass
+
+        def run(self):
+            raise RuntimeError("terminal broken")
+
+    monkeypatch.setattr("blacklight.tui.app.BlacklightApp", BoomApp)
+    app = ConsoleApp(execute_scan=lambda *a, **k: 0, execute_web=lambda *a, **k: 0)
+    app._run_interactive()
+    out = capsys.readouterr().err
+    assert "interactive mode unavailable" in out
+
+
 def test_module_run_args_builds_scan_kwargs():
     from blacklight.console import ConsoleState, module_run_args, SCAN_MODULE
 

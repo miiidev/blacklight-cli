@@ -343,10 +343,16 @@ class ConsoleApp:
                 break
 
     def _run_interactive(self) -> None:
-        from blacklight.tui.app import BlacklightApp
+        try:
+            from blacklight.tui import app as tui_app
 
-        BlacklightApp(
-            execute_scan=self.runner.execute_scan,
-            execute_web=self.runner.execute_web,
-            confirm=self._confirm,
-        ).run()
+            tui_app.BlacklightApp(
+                execute_scan=self.runner.execute_scan,
+                execute_web=self.runner.execute_web,
+                confirm=self._confirm,
+            ).run()
+        except Exception:
+            theme.make_console(stderr=True).print(
+                "[yellow]console: interactive mode unavailable; "
+                "pipe commands via stdin instead.[/]"
+            )
