@@ -89,6 +89,7 @@ def execute_scan(
     ports: str, timeout: int, no_cache: bool,
     output: Path | None, fmt: str,
     permission_granted: bool, confirm: Callable[[str], bool],
+    on_progress: Callable[[str, int | None, int | None], None] | None = None,
 ) -> int:
     """Verify targets under guardrails, run the scan pipeline, log, render,
     and export. Returns the process exit code (0 or 1)."""
@@ -120,7 +121,8 @@ def execute_scan(
         fmt = "markdown" if output.suffix == ".md" else "json"
 
     try:
-        result = run_scan(targets, ports, timeout, no_cache)
+        result = run_scan(targets, ports, timeout, no_cache,
+                          on_progress=on_progress)
     except (
         requests.RequestException,
         subprocess.TimeoutExpired,
@@ -241,8 +243,17 @@ def version() -> None:
     console.print(f"blacklight-cli {__version__}")
 
 
-def run_scan(targets: list[str], ports: str, timeout: int, no_cache: bool) -> dict:
-    """Run the full pipeline: scan -> CVE match -> enrich -> score metadata."""
+def run_scan(
+    targets: list[str], ports: str, timeout: int, no_cache: bool,
+    on_progress: Callable[[str, int | None, int | None], None] | None = None,
+) -> dict:
+    """Run the full pipeline: scan -> CVE match -> enrich -> score metadata.
+
+    ``on_progress(stage, current, total)`` is called at phase boundaries
+    when provided; ``total`` is None for phases without a known length.
+    """
+    if on_progress:
+        on_progress("scanning", None, None)
     with Progress(
         SpinnerColumn(spinner_name="aesthetic", style=theme.ACCENT),
         TextColumn("[cyan]{task.description}"),
@@ -258,10 +269,16 @@ def run_scan(targets: list[str], ports: str, timeout: int, no_cache: bool) -> di
         phase = progress.add_task("Matching CVEs against NVD...", total=len(records))
         client = NvdClient(api_key=os.environ.get("BLACKLIGHT_NVD_KEY"), no_cache=no_cache)
         findings: list[Finding] = []
-        for record in records:
+        if on_progress:
+            on_progress("matching", 0, len(records))
+        for index, record in enumerate(records):
             findings.extend(build_findings([record], client))
             progress.advance(phase)
+            if on_progress:
+                on_progress("matching", index + 1, len(records))
         progress.add_task("Enriching with EPSS/KEV...", total=None)
+        if on_progress:
+            on_progress("enriching", None, None)
         findings = enrichment.enrich_findings(findings)
     hosts_scanned = len({record.host for record in records})
     return {

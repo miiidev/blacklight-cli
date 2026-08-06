@@ -138,6 +138,40 @@ def test_tui_run_captures_engine_console(capsys):
     asyncio.run(scenario())
 
 
+def test_tui_run_progress_bar_tracks_engine():
+    from textual.widgets import ProgressBar
+
+    def progress_scan(targets, **kwargs):
+        kwargs["on_progress"]("matching", 0, 4)
+        kwargs["on_progress"]("matching", 2, 4)
+        kwargs["on_progress"]("matching", 4, 4)
+        return 0
+
+    app = make_app(execute_scan=progress_scan)
+
+    async def scenario():
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("enter")  # activate scan
+            await pilot.pause()
+            from textual.widgets import DataTable
+            table = app.screen.query_one("#options", DataTable)
+            table.move_cursor(row=0, column=0)
+            await pilot.press("enter")
+            await pilot.pause()
+            await pilot.press(*"192.168.1.10", "enter")
+            await pilot.pause()
+            await pilot.press("r")
+            await pilot.pause()
+            await pilot.pause()
+            bar = app.screen.query_one(ProgressBar)
+            assert bar.total == 1
+            assert bar.progress == bar.total  # finished at 100%
+            await pilot.press("q")
+
+    asyncio.run(scenario())
+
+
 def test_confirm_bridge_blocks_until_answered():
     import threading
 

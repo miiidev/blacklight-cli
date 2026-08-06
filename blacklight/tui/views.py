@@ -3,7 +3,7 @@
 import contextlib
 
 from textual.app import ComposeResult
-from textual.containers import Horizontal, Vertical
+from textual.containers import Center, Horizontal, Middle, Vertical
 from textual.screen import ModalScreen, Screen
 from textual.widgets import (
     Button,
@@ -218,15 +218,50 @@ class RunScreen(Screen):
             kwargs["confirm"] = self.app.runner.confirm
             with capture_engine_output(self._log):
                 if module == "scan":
+                    kwargs["on_progress"] = self._on_progress
                     code = self.app.runner.execute_scan(targets, **kwargs)
                 else:
                     code = self.app.runner.execute_web(targets[0], **kwargs)
+            self._finish_progress()
         except Exception as exc:
             self._log(f"Scan failed: {exc}")
             self._set_title("Run failed")
+            self._fail_progress()
             return
         self._log("Done." if code == 0 else "Done with errors.")
         self._show_findings(module, targets[0])
+
+    STAGES = {
+        "scanning": "Scanning hosts with nmap",
+        "matching": "Matching CVEs against NVD",
+        "enriching": "Enriching with EPSS/KEV",
+    }
+
+    def _on_progress(self, stage, current, total) -> None:
+        self.app.call_from_thread(
+            self._show_progress, stage, current, total
+        )
+
+    def _show_progress(self, stage, current, total) -> None:
+        bar = self.query_one(ProgressBar)
+        if total:
+            bar.update(total=total, progress=current)
+        else:
+            bar.update(total=None)
+        self._set_title_ui(self.STAGES.get(stage, stage))
+
+    def _finish_progress(self) -> None:
+        self.app.call_from_thread(self._finish_progress_ui)
+
+    def _finish_progress_ui(self) -> None:
+        self.query_one(ProgressBar).update(total=1, progress=1)
+        self._set_title_ui(self.app.runner.state.active.title())
+
+    def _fail_progress(self) -> None:
+        self.app.call_from_thread(self._fail_progress_ui)
+
+    def _fail_progress_ui(self) -> None:
+        self.query_one(ProgressBar).update(total=1, progress=0)
 
     def _log(self, line: str) -> None:
         self.app.call_from_thread(
@@ -234,9 +269,10 @@ class RunScreen(Screen):
         )
 
     def _set_title(self, title: str) -> None:
-        self.app.call_from_thread(
-            self.query_one("#run-title", Label).update, title
-        )
+        self.app.call_from_thread(self._set_title_ui, title)
+
+    def _set_title_ui(self, title: str) -> None:
+        self.query_one("#run-title", Label).update(title)
 
     def _show_findings(self, kind: str, target: str) -> None:
         def fill() -> None:
@@ -387,10 +423,12 @@ class ConfirmModal(ModalScreen[bool]):
         self._message = message
 
     def compose(self) -> ComposeResult:
-        yield Label(self._message)
-        with Horizontal():
-            yield Button("Yes", variant="primary", id="yes")
-            yield Button("No", id="no")
+        with Center():
+            with Middle():
+                yield Label(self._message)
+                with Horizontal():
+                    yield Button("Yes", variant="primary", id="yes")
+                    yield Button("No", id="no")
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         self.dismiss(event.button.id == "yes")
