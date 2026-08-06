@@ -207,6 +207,118 @@ class RunScreen(Screen):
         self.app.pop_screen()
 
 
+class HistoryScreen(Screen):
+    """Recent scans; enter shows the diff, t shows the trend."""
+
+    BINDINGS = [
+        ("q", "quit_app", "Quit"),
+        ("escape", "back", "Back"),
+        ("t", "trend", "Trend"),
+    ]
+
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=False)
+        yield Label("SCAN HISTORY - enter: diff, t: trend")
+        yield DataTable(id="history")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        import sqlite3
+
+        from blacklight import history
+        table = self.query_one("#history", DataTable)
+        table.cursor_type = "row"
+        table.add_columns(
+            "ID", "KIND", "TARGET", "HOSTS", "SERVICES", "FINDINGS", "SCANNED AT"
+        )
+        try:
+            rows = history.list_recent()
+        except sqlite3.Error as exc:
+            table.add_row(f"History database error: {exc}")
+            return
+        for row in rows:
+            table.add_row(
+                str(row.id), row.kind, row.target, str(row.hosts),
+                str(row.services), str(row.findings_count), row.scanned_at,
+            )
+
+    def _selected_target(self) -> str | None:
+        table = self.query_one("#history", DataTable)
+        if table.row_count == 0:
+            return None
+        return table.get_row_at(table.cursor_row)[2]
+
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        target = self._selected_target()
+        if target:
+            self.app.push_screen(DetailScreen(target=target))
+
+    def action_trend(self) -> None:
+        target = self._selected_target()
+        if target:
+            self.app.push_screen(DetailScreen(target=target, trend=True))
+
+    def action_back(self) -> None:
+        self.app.pop_screen()
+
+
+class DetailScreen(Screen):
+    """Diff or risk trend for one target."""
+
+    BINDINGS = [("q", "quit_app", "Quit"), ("escape", "back", "Back")]
+
+    def __init__(self, *, target: str, trend: bool = False) -> None:
+        super().__init__()
+        self._target = target
+        self._trend = trend
+
+    def compose(self) -> ComposeResult:
+        yield Header(show_clock=False)
+        yield Label(id="detail-title")
+        yield DataTable(id="detail")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        from blacklight import history
+        table = self.query_one("#detail", DataTable)
+        table.cursor_type = "row"
+        title = self.query_one("#detail-title", Label)
+        if self._trend:
+            title.update(f"RISK TREND - {self._target}")
+            table.add_columns("SCANNED AT", "SCORE")
+            points = history.trend_for_target(self._target)
+            if points is None:
+                table.add_row("No scans of this target yet.")
+                return
+            for point in points:
+                table.add_row(point.scanned_at, f"{point.score:.1f}")
+            return
+        result = history.diff_for_target(self._target)
+        title.update(f"DIFF - {self._target}")
+        if result is None:
+            table.add_row("No previous scan of this target.")
+            return
+        before = ("?" if result.score_before is None
+                  else f"{result.score_before:.1f}")
+        title.update(
+            f"DIFF - {self._target}  score "
+            f"{before} -> {result.score_after:.1f}"
+        )
+        table.add_columns("STATUS", "HOST", "SERVICE", "CVE", "SEVERITY")
+        for rec in result.new:
+            table.add_row("NEW", rec.host or "", rec.service or "",
+                          rec.cve_id or "", rec.severity)
+        for rec in result.fixed:
+            table.add_row("FIXED", rec.host or "", rec.service or "",
+                          rec.cve_id or "", rec.severity)
+        for rec in result.unchanged:
+            table.add_row("SAME", rec.host or "", rec.service or "",
+                          rec.cve_id or "", rec.severity)
+
+    def action_back(self) -> None:
+        self.app.pop_screen()
+
+
 class ConfirmModal(ModalScreen[bool]):
     """Yes/No modal shown when an engine asks for authorization."""
 
