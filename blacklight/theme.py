@@ -1,5 +1,8 @@
 """Visual identity for blacklight-cli: banner art, colors, and gauges."""
 
+import os
+from collections import ChainMap
+
 from rich.console import Console
 from rich.text import Text
 
@@ -83,3 +86,51 @@ def risk_gauge(score: float) -> str:
         color = "red"
     bar = "█" * filled + "░" * (10 - filled)
     return f"[{color}]{bar}[/] {clamped:.1f}"
+
+
+def enable_windows_vt() -> bool:
+    """Enable ANSI Virtual Terminal Processing on Windows consoles.
+
+    Without this, Windows consoles (cmd.exe, PowerShell, conhost) print
+    ANSI escape sequences literally as '?[38;2;...' instead of rendering
+    colors. Returns True when at least one handled stream is a console with
+    VT applied, False otherwise (redirected pipe, non-console PTY, or
+    non-Windows platforms where ANSI is universally supported).
+    """
+    if os.name != "nt":
+        return True
+    try:
+        import ctypes
+    except ImportError:
+        return False
+    ENABLE_VIRTUAL_TERMINAL_PROCESSING = 0x0004
+    enabled = False
+    for handle_id in (-11, -12):  # stdout, stderr
+        handle = ctypes.windll.kernel32.GetStdHandle(handle_id)
+        if not handle or handle == -1:
+            continue
+        mode = ctypes.c_uint32()
+        if not ctypes.windll.kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
+            continue
+        if ctypes.windll.kernel32.SetConsoleMode(
+            handle, mode.value | ENABLE_VIRTUAL_TERMINAL_PROCESSING
+        ):
+            enabled = True
+    return enabled
+
+
+def make_console(color: bool = False, **kwargs: object) -> Console:
+    """Build a rich Console that prints plain text by default.
+
+    Plain output (no colors, no live cursor animation) is the default so
+    blacklight never prints raw ANSI escapes on a display that cannot render
+    them. Pass ``color=True`` to opt into full color and animated progress.
+    NO_COLOR always wins and forces plain output. The TERM=dumb marker is
+    what stops rich's Live widgets (progress bars) from emitting
+    cursor-control escapes on the plain path.
+    """
+    if color and not os.environ.get("NO_COLOR"):
+        return Console(**kwargs)
+    environ = ChainMap({"TERM": "dumb"}, os.environ)
+    kwargs.setdefault("_environ", environ)
+    return Console(no_color=True, **kwargs)

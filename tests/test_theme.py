@@ -60,3 +60,41 @@ def test_risk_gauge_clamps():
     assert theme.risk_gauge(-5) == "[green]░░░░░░░░░░[/] 0.0"
     assert theme.risk_gauge(150) == "[red]██████████[/] 100.0"
     assert theme.risk_gauge(72.4).endswith("72.4")
+
+
+def test_enable_windows_vt_is_safe():
+    theme.enable_windows_vt()
+
+
+def test_make_console_plain_by_default():
+    from collections import ChainMap
+
+    console = theme.make_console()
+    assert console.color_system is None
+    assert isinstance(console._environ, ChainMap)
+    assert console._environ.get("TERM") == "dumb"
+
+
+def test_make_console_color_opts_into_ansi(monkeypatch):
+    from collections import ChainMap
+
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    console = theme.make_console(color=True)
+    assert not isinstance(console._environ, ChainMap)
+    assert console._environ.get("TERM") != "dumb"
+
+
+def test_no_color_wins_over_color_option(monkeypatch):
+    from collections import ChainMap
+
+    monkeypatch.setenv("NO_COLOR", "1")
+    console = theme.make_console(color=True)
+    assert isinstance(console._environ, ChainMap)
+    assert console._environ.get("TERM") == "dumb"
+
+
+def test_make_console_environ_reads_live_columns(monkeypatch):
+    console = theme.make_console()
+    monkeypatch.setenv("COLUMNS", "180")
+    expected = 180 - (1 if console.legacy_windows else 0)
+    assert console.width == expected

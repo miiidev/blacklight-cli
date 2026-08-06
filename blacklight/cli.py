@@ -10,7 +10,6 @@ from pathlib import Path
 
 import requests
 import typer
-from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 
 from blacklight import __version__, history, paths
@@ -28,7 +27,14 @@ for _stream in (sys.stdout, sys.stderr):
         except (OSError, ValueError):
             pass
 
-console = Console()
+# Windows: make the console process ANSI color escapes instead of printing
+# them literally (cmd.exe/PowerShell need Virtual Terminal Processing on).
+# Applies only when the user opts into colored output via --color.
+theme.enable_windows_vt()
+
+# Plain output is the default so blacklight never prints raw ANSI escapes on
+# a display that cannot render them; pass --color for the full experience.
+console = theme.make_console()
 
 app = typer.Typer(
     help="blacklight-cli: scan networks for vulnerable services. "
@@ -37,13 +43,19 @@ app = typer.Typer(
 
 
 @app.callback(invoke_without_command=True)
-def _entry(ctx: typer.Context) -> None:
-    """Show the brand banner, then run the console when no subcommand was given."""
+def _entry(
+    ctx: typer.Context,
+    color: bool = typer.Option(
+        False, "--color", is_eager=True,
+        help="Enable colors and animated progress (emits ANSI escapes)."),
+) -> None:
+    """Show the brand banner, then the help when no subcommand was given."""
+    if color:
+        global console
+        console = theme.make_console(color=True)
     theme.print_banner(console)
     if ctx.invoked_subcommand is None:
-        from blacklight.console import ConsoleApp
-
-        ConsoleApp(execute_scan=execute_scan, execute_web=execute_web).run()
+        console.print(ctx.get_help())
 
 
 @app.command()

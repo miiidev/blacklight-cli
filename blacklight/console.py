@@ -119,7 +119,7 @@ class CommandRunner:
         parts = line.split(None, 2)
         cmd = parts[0].lower()
         args = parts[1:] if len(parts) > 1 else []
-        console = Console(file=out, highlight=False)
+        console = theme.make_console(file=out, highlight=False)
 
         if cmd in ("exit", "quit"):
             return True
@@ -316,7 +316,7 @@ class ConsoleApp:
 
     def _print_header(self) -> None:
         names = ", ".join(self.runner.state.modules)
-        console = Console()
+        console = theme.make_console()
         console.print(f"[bold {theme.ACCENT}]blacklight-cli[/] v{__version__} - "
                       f"{len(self.runner.state.modules)} modules loaded ({names})")
         console.print("Type 'help' for commands.")
@@ -356,7 +356,7 @@ class ConsoleApp:
                     if self.runner.execute(line, sys.stdout):
                         break
                 except KeyboardInterrupt:
-                    Console().print("[yellow]Interrupted.[/]")
+                    theme.make_console().print("[yellow]Interrupted.[/]")
                     continue
         print()
 

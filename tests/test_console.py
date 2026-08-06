@@ -280,13 +280,14 @@ def test_console_command_piped_session(monkeypatch):
     assert kwargs["permission_granted"] is False
 
 
-def test_bare_invocation_enters_console(monkeypatch):
+def test_bare_invocation_shows_help(monkeypatch):
     monkeypatch.setattr("blacklight.cli.execute_scan", lambda *a, **k: 0)
-    result = runner.invoke(app, [], input="modules\nexit\n")
+    result = runner.invoke(app, [])
     assert result.exit_code == 0
     assert "██████╗" in result.output
-    assert "modules loaded" in result.output
     assert "scan" in result.output
+    assert "console" in result.output
+    assert "modules loaded" not in result.output
 
 
 def test_console_history_lists_scans(monkeypatch):

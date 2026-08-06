@@ -9,7 +9,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
 
-from blacklight import __version__
+from blacklight import __version__, theme
 from blacklight.cve_matcher import Finding
 from blacklight.scoring import host_risk_score, web_risk_score
 from blacklight.theme import ACCENT, CYAN, PURPLE, SEVERITY_STYLE, risk_gauge
@@ -119,7 +119,7 @@ def render_terminal(
     web_meta: dict | None = None,
 ) -> None:
     """Render the rich terminal report."""
-    console = console or Console()
+    console = console or theme.make_console()
     if web_findings is not None:
         console.print(
             Panel(
