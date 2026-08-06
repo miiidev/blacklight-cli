@@ -1,6 +1,7 @@
 """msfconsole-style interactive session for blacklight-cli."""
 
 import re
+import sqlite3
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -8,7 +9,7 @@ from typing import Callable, TextIO
 
 from rich.console import Console
 
-from blacklight import __version__, paths
+from blacklight import __version__, history, paths
 from blacklight import theme
 
 
@@ -69,6 +70,9 @@ HELP_TEXT = """Commands:
   unset <OPT>          Reset an option to its default
   run                  Run the active module with current options
   back                 Deselect the active module
+  history              List recent scans
+  history <target>     Diff the latest scan of <target> vs its previous scan
+  trend <target>       Show the risk-score trend for <target>
   exit | quit          Leave the console
 """
 
@@ -139,6 +143,10 @@ class CommandRunner:
                 console.print("[yellow]No module selected.[/]")
             else:
                 self.state.active = None
+        elif cmd == "history":
+            self._history(args, console)
+        elif cmd == "trend":
+            self._trend(args, console)
         else:
             console.print(f"[red]Unknown command: {cmd}[/] Type 'help'.")
         return False
@@ -242,6 +250,42 @@ class CommandRunner:
                               "scanning the first only[/]")
             code = self._execute_web(targets[0], **kwargs)
         console.print("[green]Done.[/]" if code == 0 else "[red]Done with errors.[/]")
+
+    def _history(self, args: list[str], console: Console) -> None:
+        if not args:
+            try:
+                rows = history.list_recent()
+            except sqlite3.Error as exc:
+                console.print(f"[red]History database error:[/] {exc}")
+                return
+            history.render_list(rows, console)
+            return
+        if len(args) != 1:
+            console.print("[red]Usage: history [<target>][/]")
+            return
+        try:
+            result = history.diff_for_target(args[0])
+        except sqlite3.Error as exc:
+            console.print(f"[red]History database error:[/] {exc}")
+            return
+        if result is None:
+            console.print(f"[yellow]No scans of {args[0]} yet.[/]")
+            return
+        history.render_diff(result, console)
+
+    def _trend(self, args: list[str], console: Console) -> None:
+        if len(args) != 1:
+            console.print("[red]Usage: trend <target>[/]")
+            return
+        try:
+            points = history.trend_for_target(args[0])
+        except sqlite3.Error as exc:
+            console.print(f"[red]History database error:[/] {exc}")
+            return
+        if points is None:
+            console.print(f"[yellow]No scans of {args[0]} yet.[/]")
+            return
+        history.render_trend(points, console, target=args[0])
 
 
 class ConsoleApp:

@@ -287,3 +287,72 @@ def test_bare_invocation_enters_console(monkeypatch):
     assert "██████╗" in result.output
     assert "modules loaded" in result.output
     assert "scan" in result.output
+
+
+def test_console_history_lists_scans(monkeypatch):
+    monkeypatch.setenv("COLUMNS", "200")
+    from blacklight import history
+
+    history.record_scan("scan", "192.168.1.10", False, {
+        "hosts_scanned": 1, "services_found": 1, "findings_count": 0,
+        "generated": "2026-08-04T10:00:00+00:00",
+    }, [])
+    _, out = run_commands(["history"])
+    assert "192.168.1.10" in out
+
+
+def test_console_history_empty_warns():
+    _, out = run_commands(["history"])
+    assert "No scan history yet" in out
+
+
+def test_console_history_with_target_diffs():
+    from blacklight import history
+    from blacklight.cve_matcher import Finding
+
+    finding = Finding(
+        host="192.168.1.10", port=22, service="OpenSSH", version="9.6p1",
+        cpe="cpe:2.3:a:openssh:openssh:9.6p1:*:*:*:*:*:*:*",
+        cve_id="CVE-2024-0001", description="t", cvss_score=8.1,
+        severity="high", fixed_version="9.7")
+    meta = {"hosts_scanned": 1, "services_found": 1, "findings_count": 1,
+            "generated": "2026-08-04T10:00:00+00:00"}
+    history.record_scan("scan", "192.168.1.10", False, meta, [finding])
+    history.record_scan("scan", "192.168.1.10", False,
+                        dict(meta, generated="2026-08-04T11:00:00+00:00"), [])
+    _, out = run_commands(["history 192.168.1.10"])
+    assert "Risk score:" in out
+    assert "improved" in out
+
+
+def test_console_history_unknown_target_warns():
+    _, out = run_commands(["history 10.0.0.99"])
+    assert "No scans of 10.0.0.99 yet." in out
+
+
+def test_console_history_usage_error():
+    _, out = run_commands(["history a b"])
+    assert "Usage: history [<target>]" in out
+
+
+def test_console_trend_renders():
+    from blacklight import history
+
+    meta = {"hosts_scanned": 1, "services_found": 1, "findings_count": 0,
+            "generated": "2026-08-04T10:00:00+00:00"}
+    history.record_scan("scan", "192.168.1.10", False, meta, [])
+    history.record_scan("scan", "192.168.1.10", False,
+                        dict(meta, generated="2026-08-04T11:00:00+00:00"), [])
+    _, out = run_commands(["trend 192.168.1.10"])
+    assert "Risk trend for 192.168.1.10" in out
+    assert "0.0" in out
+
+
+def test_console_trend_unknown_target_warns():
+    _, out = run_commands(["trend 10.0.0.99"])
+    assert "No scans of 10.0.0.99 yet." in out
+
+
+def test_console_trend_usage_error():
+    _, out = run_commands(["trend"])
+    assert "Usage: trend <target>" in out
