@@ -98,3 +98,10 @@ def test_make_console_environ_reads_live_columns(monkeypatch):
     monkeypatch.setenv("COLUMNS", "180")
     expected = 180 - (1 if console.legacy_windows else 0)
     assert console.width == expected
+
+
+def test_palette_uses_tokyo_night_colors():
+    assert theme.PURPLE == "#BB9AF7"
+    assert theme.CYAN == "#7AA2F7"
+    assert theme.ACCENT == "#BB9AF7"
+    assert theme.DIM == "#6b7280"

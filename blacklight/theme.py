@@ -6,9 +6,9 @@ from collections import ChainMap
 from rich.console import Console
 from rich.text import Text
 
-PURPLE = "#8b5cf6"
-CYAN = "#22d3ee"
-ACCENT = "#f0abfc"
+PURPLE = "#BB9AF7"
+CYAN = "#7AA2F7"
+ACCENT = "#BB9AF7"
 DIM = "#6b7280"
 
 BANNER = """\
