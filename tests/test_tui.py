@@ -172,6 +172,43 @@ def test_tui_run_progress_bar_tracks_engine():
     asyncio.run(scenario())
 
 
+def test_tui_run_progress_bar_determinate_during_run():
+    import time
+
+    from textual.widgets import ProgressBar
+
+    def slow_scan(targets, **kwargs):
+        time.sleep(0.3)
+        return 0
+
+    app = make_app(execute_scan=slow_scan)
+
+    async def scenario():
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("enter")  # activate scan
+            await pilot.pause()
+            from textual.widgets import DataTable
+            table = app.screen.query_one("#options", DataTable)
+            table.move_cursor(row=0, column=0)
+            await pilot.press("enter")
+            await pilot.pause()
+            await pilot.press(*"192.168.1.10", "enter")
+            await pilot.pause()
+            await pilot.press("r")
+            await pilot.pause()
+            bar = app.screen.query_one(ProgressBar)
+            assert bar.total == 180  # budget: (timeout 30 * 2) + 120
+            await asyncio.sleep(0.4)
+            await pilot.pause()
+            bar = app.screen.query_one(ProgressBar)
+            assert bar.total == 1  # settled at 100% when the run finished
+            assert bar.progress == bar.total
+            await pilot.press("q")
+
+    asyncio.run(scenario())
+
+
 def test_confirm_bridge_blocks_until_answered():
     import threading
 

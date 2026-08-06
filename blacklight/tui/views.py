@@ -203,6 +203,9 @@ class RunScreen(Screen):
         self.query_one("#findings", DataTable).add_columns(
             "HOST", "PORT", "SERVICE", "CVE", "SEVERITY", "EPSS", "KEV"
         )
+        self._progress_running = False
+        self._budget = 60.0
+        self._ticker = self.set_interval(0.5, self._tick_progress, pause=True)
         self.run_worker(self._run_task, thread=True)
 
     def _run_task(self) -> None:
@@ -218,9 +221,12 @@ class RunScreen(Screen):
             kwargs["confirm"] = self.app.runner.confirm
             with capture_engine_output(self._log):
                 if module == "scan":
+                    budget = (kwargs.get("timeout") or 30) * 2 + 120
+                    self.app.call_from_thread(self._start_progress, budget)
                     kwargs["on_progress"] = self._on_progress
                     code = self.app.runner.execute_scan(targets, **kwargs)
                 else:
+                    self.app.call_from_thread(self._start_progress, 60)
                     code = self.app.runner.execute_web(targets[0], **kwargs)
             self._finish_progress()
         except Exception as exc:
@@ -242,18 +248,32 @@ class RunScreen(Screen):
             self._show_progress, stage, current, total
         )
 
+    def _tick_progress(self) -> None:
+        bar = self.query_one(ProgressBar)
+        if not self._progress_running or bar.total is None or bar.total == 1:
+            return
+        bar.advance(0.5)
+
+    def _start_progress(self, budget: float) -> None:
+        self._budget = budget
+        self._progress_running = True
+        self.query_one(ProgressBar).update(total=budget, progress=0)
+        self._ticker.resume()
+
     def _show_progress(self, stage, current, total) -> None:
         bar = self.query_one(ProgressBar)
         if total:
+            self._progress_running = False
+            self._ticker.pause()
             bar.update(total=total, progress=current)
-        else:
-            bar.update(total=None)
         self._set_title_ui(self.STAGES.get(stage, stage))
 
     def _finish_progress(self) -> None:
         self.app.call_from_thread(self._finish_progress_ui)
 
     def _finish_progress_ui(self) -> None:
+        self._progress_running = False
+        self._ticker.pause()
         self.query_one(ProgressBar).update(total=1, progress=1)
         self._set_title_ui(self.app.runner.state.active.title())
 
@@ -261,6 +281,8 @@ class RunScreen(Screen):
         self.app.call_from_thread(self._fail_progress_ui)
 
     def _fail_progress_ui(self) -> None:
+        self._progress_running = False
+        self._ticker.pause()
         self.query_one(ProgressBar).update(total=1, progress=0)
 
     def _log(self, line: str) -> None:
