@@ -736,8 +736,6 @@ def test_trend_host_filter_limits_to_one_host():
                                  in_kev=True, epss=0.9)])
     points = trend_for_target("192.168.1.0/24", host="192.168.1.20")
     assert len(points) == 1
-    assert points[0].score == trend_for_target("192.168.1.20").__len__ or True
-    # the critical finding drives the score regardless of host filter
     assert points[0].score > 50
 
 
