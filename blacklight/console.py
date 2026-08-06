@@ -307,10 +307,10 @@ class ConsoleApp:
 
     def run(self) -> int:
         paths.ensure_dirs()
-        self._print_header()
         if sys.stdin.isatty():
             self._run_interactive()
         else:
+            self._print_header()
             self._run_piped()
         return 0
 
@@ -331,38 +331,10 @@ class ConsoleApp:
                 break
 
     def _run_interactive(self) -> None:
-        from prompt_toolkit import HTML, PromptSession
-        from prompt_toolkit.completion import WordCompleter
-        from prompt_toolkit.history import FileHistory
-        from prompt_toolkit.patch_stdout import patch_stdout
+        from blacklight.tui.app import BlacklightApp
 
-        words = [
-            "help", "modules", "use", "show", "options", "set", "unset",
-            "run", "back", "history", "trend", "exit", "quit",
-        ]
-        for module in self.runner.state.modules.values():
-            words.extend([module.name, *module.options])
-        session = PromptSession(
-            completer=WordCompleter(words, ignore_case=True),
-            history=FileHistory(str(paths.CONSOLE_HISTORY)),
-        )
-        with patch_stdout():
-            while True:
-                try:
-                    line = session.prompt(HTML(self._prompt_html()))
-                except (EOFError, KeyboardInterrupt):
-                    break
-                try:
-                    if self.runner.execute(line, sys.stdout):
-                        break
-                except KeyboardInterrupt:
-                    theme.make_console().print("[yellow]Interrupted.[/]")
-                    continue
-        print()
-
-    def _prompt_html(self) -> str:
-        active = self.runner.state.active
-        if active is None:
-            return "<ansicyan>blacklight</ansicyan> > "
-        return (f"<ansicyan>blacklight</ansicyan> "
-                f"<ansipurple>({active})</ansipurple> > ")
+        BlacklightApp(
+            execute_scan=self.runner._execute_scan,
+            execute_web=self.runner._execute_web,
+            confirm=self._confirm,
+        ).run()
