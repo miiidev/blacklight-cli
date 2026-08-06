@@ -23,7 +23,9 @@ class ConfirmBridge:
         self._app.call_from_thread(
             self._app.push_screen, ConfirmModal(message), self._answered
         )
-        self._event.wait()
+        while not self._event.wait(0.1):
+            if not self._app.is_running:
+                return False
         return self._answer
 
     def _answered(self, value: bool | None) -> None:

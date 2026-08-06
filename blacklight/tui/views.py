@@ -454,7 +454,11 @@ class ConfirmModal(ModalScreen[bool]):
     }
     """
 
-    BINDINGS = [("escape", "no", "No")]
+    BINDINGS = [
+        ("escape", "no", "No"),
+        ("y", "yes", "Yes"),
+        ("n", "no", "No"),
+    ]
 
     def __init__(self, message: str) -> None:
         super().__init__()
@@ -472,3 +476,6 @@ class ConfirmModal(ModalScreen[bool]):
 
     def action_no(self) -> None:
         self.dismiss(False)
+
+    def action_yes(self) -> None:
+        self.dismiss(True)

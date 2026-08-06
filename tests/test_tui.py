@@ -261,6 +261,61 @@ def test_confirm_bridge_blocks_until_answered():
     assert result == [True]
 
 
+def test_confirm_bridge_stops_awaiting_when_app_stops():
+    import threading
+
+    from blacklight.tui.app import ConfirmBridge
+
+    class FakeApp:
+        running = True
+
+        @property
+        def is_running(self):
+            return self.running
+
+        def call_from_thread(self, fn, *args, **kwargs):
+            fn(*args, **kwargs)
+
+        def push_screen(self, screen, callback):
+            # modal is shown forever - never answered
+            self.modal = screen
+
+    app = FakeApp()
+    bridge = ConfirmBridge(app)
+    result = []
+
+    def asker():
+        result.append(bridge.ask("authorized?"))
+
+    thread = threading.Thread(target=asker, daemon=True)
+    thread.start()
+    import time
+    time.sleep(0.1)
+    app.running = False  # user quit mid-prompt
+    thread.join(timeout=2)
+    assert result == [False]
+    assert not thread.is_alive()
+
+
+def test_confirm_modal_answers_with_y_and_n_keys():
+    from blacklight.tui.views import ConfirmModal
+
+    for key, expected in [("y", True), ("n", False)]:
+        app = make_app()
+        pushed = []
+
+        async def scenario():
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                await app.push_screen(ConfirmModal("authorize?"), pushed.append)
+                await pilot.pause()
+                await pilot.press(key)
+                await pilot.pause()
+
+        asyncio.run(scenario())
+        assert pushed == [expected]
+
+
 def test_tui_history_screen_lists_scans(monkeypatch, tmp_path):
     from blacklight import history
     monkeypatch.setattr("blacklight.paths.HOME_DIR", tmp_path)
