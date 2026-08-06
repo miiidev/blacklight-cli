@@ -338,7 +338,7 @@ class ConsoleApp:
 
         words = [
             "help", "modules", "use", "show", "options", "set", "unset",
-            "run", "back", "exit", "quit",
+            "run", "back", "history", "trend", "exit", "quit",
         ]
         for module in self.runner.state.modules.values():
             words.extend([module.name, *module.options])
