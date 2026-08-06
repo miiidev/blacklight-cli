@@ -38,6 +38,7 @@ class BlacklightApp(App):
 
     BINDINGS = [("q", "quit_app", "Quit")]
     TITLE = "blacklight-cli console"
+    theme = "tokyo-night"
 
     def __init__(
         self,

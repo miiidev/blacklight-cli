@@ -339,6 +339,11 @@ def test_tui_history_screen_lists_scans(monkeypatch, tmp_path):
     asyncio.run(scenario())
 
 
+def test_tui_uses_tokyo_night_theme():
+    from blacklight.tui.app import BlacklightApp
+    assert BlacklightApp.theme == "tokyo-night"
+
+
 def test_tui_history_enter_shows_diff(monkeypatch, tmp_path):
     from blacklight import history
     monkeypatch.setattr("blacklight.paths.HOME_DIR", tmp_path)
