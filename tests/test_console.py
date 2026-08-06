@@ -330,6 +330,22 @@ def test_module_run_args_validation_errors():
     assert error == "TIMEOUT must be a positive integer."
 
 
+def test_run_interactive_lets_tui_bridge_own_confirm(monkeypatch):
+    captured = {}
+
+    class SpyApp:
+        def __init__(self, *a, **k):
+            captured.update(k)
+
+        def run(self):
+            pass
+
+    monkeypatch.setattr("blacklight.tui.app.BlacklightApp", SpyApp)
+    app = ConsoleApp(execute_scan=lambda *a, **k: 0, execute_web=lambda *a, **k: 0)
+    app._run_interactive()
+    assert "confirm" not in captured
+
+
 def test_run_interactive_falls_back_on_tui_failure(monkeypatch, capsys):
     class BoomApp:
         def __init__(self, *a, **k):

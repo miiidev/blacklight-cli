@@ -349,7 +349,6 @@ class ConsoleApp:
             tui_app.BlacklightApp(
                 execute_scan=self.runner.execute_scan,
                 execute_web=self.runner.execute_web,
-                confirm=self._confirm,
             ).run()
         except Exception:
             theme.make_console(stderr=True).print(
