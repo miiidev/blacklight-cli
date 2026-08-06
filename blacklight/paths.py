@@ -5,7 +5,6 @@ from pathlib import Path
 HOME_DIR = Path.home() / ".blacklight"
 CACHE_DIR = HOME_DIR / "cache"
 SCAN_LOG = HOME_DIR / "scan.log"
-CONSOLE_HISTORY = HOME_DIR / "console_history"
 HISTORY_DB = HOME_DIR / "history.db"
 
 

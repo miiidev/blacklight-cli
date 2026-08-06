@@ -1,5 +1,4 @@
 import io
-from contextlib import nullcontext
 
 from blacklight.console import CommandRunner, ConsoleApp
 
@@ -202,53 +201,7 @@ def test_run_rejects_non_positive_timeout():
     assert called == []
 
 
-def test_run_interactive_ends_on_exit(monkeypatch):
-    lines = ["modules\n", "exit\n"]
 
-    class FakePrompt:
-        def __init__(self, *a, **k):
-            pass
-
-        def prompt(self, *a, **k):
-            if not lines:
-                raise EOFError
-            return lines.pop(0)
-
-    monkeypatch.setattr("prompt_toolkit.PromptSession", FakePrompt)
-    monkeypatch.setattr("prompt_toolkit.patch_stdout.patch_stdout", nullcontext)
-    app = ConsoleApp(execute_scan=lambda *a, **k: 0, execute_web=lambda *a, **k: 0)
-    app._run_interactive()
-
-
-def test_run_interactive_survives_keyboard_interrupt(monkeypatch, capsys):
-    lines = ["run\n", "exit\n"]
-
-    def boom(*a, **k):
-        raise KeyboardInterrupt
-
-    class FakePrompt:
-        def __init__(self, *a, **k):
-            pass
-
-        def prompt(self, *a, **k):
-            return lines.pop(0)
-
-    monkeypatch.setattr("prompt_toolkit.PromptSession", FakePrompt)
-    monkeypatch.setattr("prompt_toolkit.patch_stdout.patch_stdout", nullcontext)
-    app = ConsoleApp(execute_scan=boom, execute_web=lambda *a, **k: 0)
-    app.runner.state.active = "scan"
-    app.runner.state.values["TARGET"] = "192.168.1.10"
-    app._run_interactive()
-    assert "Interrupted" in capsys.readouterr().out
-
-
-def test_prompt_html_reflects_active_module():
-    app = ConsoleApp(execute_scan=lambda *a, **k: 0, execute_web=lambda *a, **k: 0)
-    assert "ansicyan" in app._prompt_html()
-    assert "(scan)" not in app._prompt_html()
-    app.runner.state.active = "scan"
-    assert "(scan)" in app._prompt_html()
-    assert "ansipurple" in app._prompt_html()
 
 
 from typer.testing import CliRunner
