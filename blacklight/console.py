@@ -124,8 +124,8 @@ class CommandRunner:
     """Parses and dispatches one console line at a time.
 
     Pure by design: the scan/web pipelines and the authorization confirm
-    are injected callables, so this class never touches prompt_toolkit,
-    typer, or the network.
+    are injected callables, so this class never touches typer or the
+    network.
     """
 
     def __init__(
@@ -301,7 +301,7 @@ class CommandRunner:
 
 
 class ConsoleApp:
-    """REPL loop: interactive (prompt_toolkit) or piped (plain input)."""
+    """Console session: interactive Textual TUI or piped (plain input)."""
 
     def __init__(
         self,
