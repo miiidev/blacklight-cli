@@ -1,5 +1,7 @@
 """Screens and modals for the blacklight TUI."""
 
+import contextlib
+
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen, Screen
@@ -19,8 +21,63 @@ from textual.widgets import (
 from blacklight.console import module_run_args
 
 
+class _CaptureStream:
+    """File-like sink that forwards each completed line to a callback."""
+
+    def __init__(self, on_line):
+        self._on_line = on_line
+        self._pending = ""
+
+    def write(self, text: str) -> int:
+        self._pending += text
+        while "\n" in self._pending:
+            line, self._pending = self._pending.split("\n", 1)
+            if line:
+                self._on_line(line)
+        return len(text)
+
+    def flush(self) -> None:
+        if self._pending:
+            line, self._pending = self._pending, ""
+            if line:
+                self._on_line(line)
+
+
+@contextlib.contextmanager
+def capture_engine_output(on_line):
+    """Route engine console writes into the TUI instead of stdout.
+
+    The engines print progress and results through a module-level rich
+    Console bound to stdout. Under the TUI that stdout is Textual's
+    alternate screen, so every write corrupts the display and forces
+    repaints. Swap the shared console (and fresh consoles created per
+    call via sys.stdout) for a plain capture that forwards lines to the
+    UI thread instead.
+    """
+    from blacklight import cli, theme
+
+    sink = _CaptureStream(on_line)
+    saved = cli.console
+    cli.console = theme.make_console(file=sink)
+    try:
+        with contextlib.redirect_stdout(sink), contextlib.redirect_stderr(sink):
+            yield
+    finally:
+        cli.console = saved
+        sink.flush()
+
+
 class MainScreen(Screen):
     """Module sidebar + options table + footer keybindings."""
+
+    CSS = """
+    #sidebar {
+        width: 28;
+    }
+    #options {
+        width: 1fr;
+    }
+    """
 
     BINDINGS = [
         ("q", "quit_app", "Quit"),
@@ -159,10 +216,11 @@ class RunScreen(Screen):
         self._log(f"Starting {module} scan of {', '.join(targets)} ...")
         try:
             kwargs["confirm"] = self.app.runner.confirm
-            if module == "scan":
-                code = self.app.runner.execute_scan(targets, **kwargs)
-            else:
-                code = self.app.runner.execute_web(targets[0], **kwargs)
+            with capture_engine_output(self._log):
+                if module == "scan":
+                    code = self.app.runner.execute_scan(targets, **kwargs)
+                else:
+                    code = self.app.runner.execute_web(targets[0], **kwargs)
         except Exception as exc:
             self._log(f"Scan failed: {exc}")
             self._set_title("Run failed")
