@@ -43,7 +43,8 @@ def test_network_scan_runs_pipeline_and_meta(monkeypatch):
     monkeypatch.setattr("blacklight.engine.enrichment.enrich_findings",
                         lambda findings, **k: findings)
     result = NetworkScan().run(["192.168.1.10"],
-                               SimpleNamespace(ports="22", timeout=30, no_cache=False))
+                               SimpleNamespace(ports="22", timeout=30, no_cache=False,
+                                               tls_checks=True))
     assert isinstance(result, ScanResult)
     assert result.kind == "scan"
     assert isinstance(result.meta, NetworkMeta)
@@ -51,7 +52,65 @@ def test_network_scan_runs_pipeline_and_meta(monkeypatch):
     assert result.meta.services_found == 1
     assert result.meta.findings_count == 0
     assert result.findings == []
+    assert result.tls_findings == []
     assert result.generated.endswith("+00:00")
+
+
+def test_network_scan_runs_tls_classify(monkeypatch):
+    from blacklight.scanner import ScanRecord, TlsData
+
+    tls_data = TlsData(
+        ssl_cert_output="Subject: commonName=x\nIssuer: commonName=x\n",
+        ssl_ciphers_output=(
+            "SSLv3:\n  cipher suites:\n    TLS_RSA_WITH_NULL_SHA (rsa 2048) - C\n"
+        ),
+    )
+    records = [ScanRecord(host="192.168.1.10", port=443, protocol="tcp",
+                          service="https", version="1.24.0", tls=tls_data)]
+    monkeypatch.setattr("blacklight.engine.scanner.scan_hosts", lambda *a, **k: records)
+    monkeypatch.setattr("blacklight.engine.NvdClient", _FakeClient)
+    monkeypatch.setattr("blacklight.engine.enrichment.enrich_findings",
+                        lambda findings, **k: findings)
+    result = NetworkScan().run(["192.168.1.10"],
+                               SimpleNamespace(ports="443", timeout=30, no_cache=False,
+                                               tls_checks=True))
+    assert any(f.cve_id == "TLS-PROTO-SSLV3" for f in result.tls_findings)
+    assert any(f.cve_id == "TLS-CIPHER-ANON" for f in result.tls_findings)
+    assert result.meta.tls_findings_count == len(result.tls_findings)
+
+
+def test_network_scan_skips_tls_when_disabled(monkeypatch):
+    from blacklight.scanner import ScanRecord, TlsData
+
+    tls_data = TlsData(ssl_cert_output="Subject: commonName=x\nIssuer: commonName=x\n",
+                       ssl_ciphers_output="")
+    records = [ScanRecord(host="192.168.1.10", port=443, protocol="tcp",
+                          service="https", version="1.24.0", tls=tls_data)]
+    monkeypatch.setattr("blacklight.engine.scanner.scan_hosts", lambda *a, **k: records)
+    monkeypatch.setattr("blacklight.engine.NvdClient", _FakeClient)
+    monkeypatch.setattr("blacklight.engine.enrichment.enrich_findings",
+                        lambda findings, **k: findings)
+    result = NetworkScan().run(["192.168.1.10"],
+                               SimpleNamespace(ports="443", timeout=30, no_cache=False,
+                                               tls_checks=False))
+    assert result.tls_findings == []
+
+
+def test_network_scan_passes_tls_checks_to_scan_hosts(monkeypatch):
+    captured = {}
+
+    def fake_scan_hosts(targets, ports, timeout, tls_checks=True):
+        captured["tls_checks"] = tls_checks
+        return []
+
+    monkeypatch.setattr("blacklight.engine.scanner.scan_hosts", fake_scan_hosts)
+    monkeypatch.setattr("blacklight.engine.NvdClient", _FakeClient)
+    monkeypatch.setattr("blacklight.engine.enrichment.enrich_findings",
+                        lambda findings, **k: findings)
+    NetworkScan().run(["192.168.1.10"],
+                      SimpleNamespace(ports="22", timeout=30, no_cache=False,
+                                      tls_checks=False))
+    assert captured["tls_checks"] is False
 
 
 def test_web_scan_runs_checks_and_meta(monkeypatch):

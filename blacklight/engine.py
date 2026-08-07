@@ -10,7 +10,7 @@ import os
 import sqlite3
 import subprocess
 import urllib.parse
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
@@ -19,8 +19,9 @@ import requests
 from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 
-from blacklight import enrichment, guardrails, history, paths, scanner, theme
+from blacklight import enrichment, guardrails, history, paths, scanner, theme, tls
 from blacklight.reporter import export_report, render_terminal
+from blacklight.tls import TlsFinding
 from blacklight.cpe_map import service_to_cpe
 from blacklight.cve_matcher import Finding, NvdClient, build_findings
 from blacklight.guardrails import Verdict
@@ -37,6 +38,7 @@ class ScanParams:
     permission_granted: bool = False
     timeout: int = 30
     no_cache: bool = False
+    tls_checks: bool = True
     ports: str | None = None
     output: Path | None = None
     fmt: str = "html"
@@ -49,6 +51,7 @@ class NetworkMeta:
     services_found: int
     findings_count: int
     generated: str
+    tls_findings_count: int = 0
 
 
 @dataclass
@@ -72,6 +75,7 @@ class ScanResult:
     findings: list[Finding]
     web_findings: list[WebFinding]
     meta: NetworkMeta | WebMeta
+    tls_findings: list[TlsFinding] = field(default_factory=list)
 
 
 class ScanExecutor:
@@ -113,7 +117,8 @@ class NetworkScan(ScanExecutor):
             BarColumn(bar_width=None),
         ) as bar:
             bar.add_task("Scanning hosts with nmap...", total=None)
-            records = scanner.scan_hosts(targets, params.ports or "1-1024", params.timeout)
+            records = scanner.scan_hosts(targets, params.ports or "1-1024",
+                                         params.timeout, tls_checks=params.tls_checks)
             phase = bar.add_task("Matching CVEs against NVD...", total=len(records))
             client = NvdClient(
                 api_key=os.environ.get("BLACKLIGHT_NVD_KEY"),
@@ -131,6 +136,16 @@ class NetworkScan(ScanExecutor):
             if on_progress:
                 on_progress("enriching", None, None)
             findings = enrichment.enrich_findings(findings)
+            tls_findings: list[TlsFinding] = []
+            if params.tls_checks:
+                tls_records = [r for r in records if r.tls is not None]
+                if on_progress:
+                    on_progress("tls", 0, len(tls_records))
+                for index, record in enumerate(tls_records):
+                    tls_findings.extend(
+                        tls.classify(record.host, record.port, record.service, record.tls))
+                    if on_progress:
+                        on_progress("tls", index + 1, len(tls_records))
         generated = datetime.now(timezone.utc).isoformat(timespec="seconds")
         return ScanResult(
             kind=self.kind,
@@ -138,12 +153,14 @@ class NetworkScan(ScanExecutor):
             generated=generated,
             findings=findings,
             web_findings=[],
+            tls_findings=tls_findings,
             meta=NetworkMeta(
                 targets=", ".join(targets),
                 hosts_scanned=len({r.host for r in records}),
                 services_found=len(records),
                 findings_count=len(findings),
                 generated=generated,
+                tls_findings_count=len(tls_findings),
             ),
         )
 
