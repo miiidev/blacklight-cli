@@ -14,6 +14,7 @@ class ScanRecord:
     protocol: str
     service: str
     version: str
+    cpe: str = ""
 
 
 def find_nmap() -> str | None:
@@ -62,9 +63,16 @@ def parse_nmap_xml(xml_text: str) -> list[ScanRecord]:
             service = port.find("service")
             name = ""
             version = ""
+            cpe = ""
             if service is not None:
                 name = service.get("product") or service.get("name") or ""
                 version = service.get("version") or ""
+                cpe_node = next(
+                    (c for c in service.findall("cpe") if c.text and c.text.strip()),
+                    None,
+                )
+                if cpe_node is not None:
+                    cpe = cpe_node.text.strip()
             records.append(
                 ScanRecord(
                     host=addr,
@@ -72,6 +80,7 @@ def parse_nmap_xml(xml_text: str) -> list[ScanRecord]:
                     protocol=port.get("protocol", "tcp"),
                     service=name,
                     version=version,
+                    cpe=cpe,
                 )
             )
     return records
