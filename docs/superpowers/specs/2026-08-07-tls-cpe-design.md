@@ -70,8 +70,8 @@ dict. nmap's `-sV` already emits a CPE identifier for many services, but
 invocation. nmap only runs these scripts on ports it detects as SSL/TLS; all
 other ports produce no TLS output, so the extra cost is bounded to TLS ports.
 
-New opt-out: CLI/console/TUI pass `--no-tls-checks` (setternally
-`ScanParams.tls_checks: bool = True`). When off, the scripts are omitted and no
+New opt-out: CLI/console/TUI set `ScanParams.tls_checks: bool = True` (CLI
+flag `--no-tls-checks` flips it off). When off, the scripts are omitted and no
 TLS parsing/classify happens — identical to today's nmap run.
 
 ### Parsing
@@ -81,8 +81,8 @@ TLS parsing/classify happens — identical to today's nmap run.
   ```python
   @dataclass
   class TlsData:
-      ssl_cert_output: str   # raw script output textf ssl-cert
-      ssl_ciphers_output: str  # raw script output text of ssl-enum-ciphers
+      ssl_cert_output: str    # raw script output text of ssl-cert
+      ssl_ciphers_output: str # raw script output text of ssl-enum-ciphers
   ```
 
   `parse_nmap_xml` reads the `<script id="ssl-cert">` / `<script
@@ -147,6 +147,8 @@ class TlsFinding:
 
 - `ScanResult` gains `tls_findings: list[TlsFinding] = field(default_factory=list)`.
 - `NetworkMeta` gains `tls_findings_count: int`.
+- `TlsFinding.to_dict()` = `asdict(self)` (mirrors `Finding.to_dict`) for the
+  JSON/HTML/Markdown export payload.
 
 ### Engine integration
 
@@ -156,7 +158,7 @@ class TlsFinding:
 2. Progress phase: `on_progress("tls", current, total)`.
 3. Append `tls.classify(...)` results to `ScanResult.tls_findings`; set
    `tls_findings_count`.
-4. `module-results` unchanged; CVE findings and enrichment untouched.
+4. CVE findings and enrichment are untouched.
 
 ### Reporting
 
@@ -174,7 +176,12 @@ class TlsFinding:
 - `history.record_scan`: writes TLS rows into the shared `findings` table with
   `kind="scan"`, `category="tls"`, and the stable `cve_id` (e.g.
   `TLS-EXPIRED`) so the `_network_fingerprint` (`host|port|service|cve_id`)
-  remains stable across scans.
+  stays stable across scans. Field mapping for a `TlsFinding` row: `detail ←
+  find.detail` (the schema column), `cvss=NULL`, `epss=0.0`, `in_kev=0`. The
+  fingerprint's `f.cve_id or f"v:{f.version}"` never reaches `f.version` —
+  TLS `cve_id` is always set; `record_scan` should still branch on
+  `category == "tls"` explicitly (a `TlsFinding` has no `description`/
+  `cvss_score` attrs).
 - `_network_score`/`diff_for_target`/`trend_for_target` need no change: they
   already read all of a scan's findings, and TLS severities feed the existing
   severity-weight scoring. TLS rows carry `epss=0`, `in_kev=0` so those bonuses
@@ -184,10 +191,13 @@ class TlsFinding:
 
 ### Console / TUI
 
-- `CommandRunner` scan options gain `NO_TLS_CHECKS` (true/false) alongside
-  `NO_CACHE`/`PERMISSION`; the TUI module table gets the same option.
-- Both are thin pass-throughs to `ScanParams.tls_checks`, consistent with the
-  existing injection seam — no new code paths.
+- `SCAN_MODULE.options` in console.py gains `NO_TLS_CHECKS` (true/false)
+  alongside `NO_CACHE`/`PERMISSION`; `module_run_args` passes it as
+  `tls_checks` kwarg, and `ConsoleApp._engine_run` maps
+  `kwargs["tls_checks"]` into `ScanParams`.
+- The TUI options table renders `module.options` directly (tui/views.py
+  `refresh_options`), so no separate TUI edit is required — the option
+  appears and flows through the same `run(kind, targets, kwargs)` seam.
 
 ---
 
@@ -198,15 +208,15 @@ class TlsFinding:
 | `blacklight/scanner.py` | `ScanRecord.cpe`, `ScanRecord.tls` (new `TlsData`), `<cpe>` + `<script>` parsing, `--script ssl-cert,ssl-enum-ciphers`, `tls_checks` param |
 | `blacklight/cpe_map.py` | `normalize_cpe()` |
 | `blacklight/cve_matcher.py` | `build_findings` prefers `record.cpe` |
-| `blacklight/tls.py` | NEW — `TlsData`? (no: TlsData lives in scanner or tls.py — see note), `TlsFinding`, `classify()` |
+| `blacklight/tls.py` | NEW — `TlsFinding`, `classify()` |
 | `blacklight/engine.py` | `ScanParams.tls_checks`, `ScanResult.tls_findings`, `NetworkMeta.tls_findings_count`, engine wiring |
 | `blacklight/reporter.py` | TLS table + export payload + summary |
 | `blacklight/templates/report.html.j2` | TLS section |
 | `blacklight/templates/report.md.j2` | TLS section |
 | `blacklight/history.py` | `record_scan` stores TLS rows (only change) |
 | `blacklight/cli.py` | `--no-tls-checks` flag |
-| `blacklight/console.py` | `NO_TLS_CHECKS` option |
-| `blacklight/tui/` | `NO_TLS_CHECKS` option (option table) |
+| `blacklight/console.py` | `NO_TLS_CHECKS` option + `ScanParams` kwarg wiring |
+| `blacklight/tui/` | none — options table renders `module.options` automatically |
 | `docs/superpowers/specs/2026-08-07-tls-cpe-design.md` | this spec |
 | docs/superpowers/plan to come | implementation plan |
 
