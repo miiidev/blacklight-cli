@@ -60,11 +60,15 @@ def scan(
         help="Confirm you are authorized to scan these targets.",
     ),
     no_cache: bool = typer.Option(False, "--no-cache", help="Bypass the local NVD/EPSS cache."),
+    tls_checks: bool = typer.Option(
+        True, "--tls-checks/--no-tls-checks",
+        help="Run TLS certificate/protocol/cipher checks (default on)."),
     timeout: int = typer.Option(30, "--timeout", help="Per-host nmap scan timeout in seconds."),
 ) -> None:
     """Scan targets for vulnerable services and report findings."""
     params = ScanParams(permission_granted=i_have_permission, timeout=timeout,
-                        no_cache=no_cache, ports=ports, output=output, fmt=fmt)
+                        no_cache=no_cache, tls_checks=tls_checks,
+                        ports=ports, output=output, fmt=fmt)
     raise typer.Exit(code=engine.run(
         engine.NetworkScan(), list(target), params,
         confirm=lambda message: typer.confirm(message),

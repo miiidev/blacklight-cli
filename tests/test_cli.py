@@ -186,3 +186,21 @@ def test_history_help_lists_subcommands():
     assert result.exit_code == 0
     assert "diff" in result.output
     assert "trend" in result.output
+
+
+def test_scan_no_tls_checks_flag_flows_to_params(monkeypatch, tmp_path):
+    monkeypatch.setattr("blacklight.engine.scanner.scan_hosts", lambda *a, **k: [])
+    monkeypatch.setattr("blacklight.engine.scanner.find_nmap", lambda: "nmap")
+    monkeypatch.setattr("blacklight.engine.os.environ", {})
+    monkeypatch.setattr("blacklight.engine.paths.CACHE_DIR", tmp_path)
+    monkeypatch.setattr("blacklight.engine.paths.SCAN_LOG", tmp_path / "scan.log")
+    captured = {}
+
+    def fake_run(executor, targets, params, **kw):
+        captured["tls_checks"] = params.tls_checks
+        return 0
+
+    monkeypatch.setattr("blacklight.engine.run", fake_run)
+    result = runner.invoke(app, ["scan", "192.168.1.10", "--no-tls-checks"])
+    assert result.exit_code == 0
+    assert captured["tls_checks"] is False
