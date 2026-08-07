@@ -1,5 +1,7 @@
 """Scan engine: shell out to nmap -sV and parse the XML output."""
 
+from __future__ import annotations
+
 import subprocess
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
@@ -15,6 +17,15 @@ class ScanRecord:
     service: str
     version: str
     cpe: str = ""
+    tls: TlsData | None = None
+
+
+@dataclass
+class TlsData:
+    """Raw nmap script output for a TLS port (ssl-cert / ssl-enum-ciphers)."""
+
+    ssl_cert_output: str
+    ssl_ciphers_output: str
 
 
 def find_nmap() -> str | None:
@@ -73,6 +84,16 @@ def parse_nmap_xml(xml_text: str) -> list[ScanRecord]:
                 )
                 if cpe_node is not None:
                     cpe = cpe_node.text.strip()
+            cert_el = next(
+                (s for s in port.findall("script") if s.get("id") == "ssl-cert"), None)
+            ciphers_el = next(
+                (s for s in port.findall("script") if s.get("id") == "ssl-enum-ciphers"), None)
+            tls_data: TlsData | None = None
+            if cert_el is not None or ciphers_el is not None:
+                tls_data = TlsData(
+                    ssl_cert_output=cert_el.get("output", "") if cert_el is not None else "",
+                    ssl_ciphers_output=ciphers_el.get("output", "") if ciphers_el is not None else "",
+                )
             records.append(
                 ScanRecord(
                     host=addr,
@@ -81,6 +102,7 @@ def parse_nmap_xml(xml_text: str) -> list[ScanRecord]:
                     service=name,
                     version=version,
                     cpe=cpe,
+                    tls=tls_data,
                 )
             )
     return records

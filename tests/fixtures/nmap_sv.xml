@@ -4,7 +4,7 @@
 <ports>
 <port protocol="tcp" portid="22"><state state="open" reason="syn-ack"/><service name="ssh" product="OpenSSH" version="9.6p1" method="probed"><cpe>cpe:/a:openbsd:openssh:9.6p1</cpe></service></port>
 <port protocol="tcp" portid="80"><state state="closed" reason="reset"/></port>
-<port protocol="tcp" portid="443"><state state="open" reason="syn-ack"/><service name="https" product="nginx" version="1.24.0" method="probed"><cpe>cpe:/a:nginx:nginx:1.24.0</cpe></service></port>
+<port protocol="tcp" portid="443"><state state="open" reason="syn-ack"/><service name="https" product="nginx" version="1.24.0" method="probed"><cpe>cpe:/a:nginx:nginx:1.24.0</cpe></service><script id="ssl-cert" output="Subject: commonName=localhost.localdomain&#10;Issuer: commonName=localhost.localdomain&#10;Not valid before: 2024-01-01T00:00:00&#10;Not valid after:  2034-01-01T00:00:00&#10;"/><script id="ssl-enum-ciphers" output="TLSv1.2:&#10;  compressors:&#10;    NULL&#10;  cipher preference: server&#10;  cipher suites:&#10;    TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 (secp256r1) - A&#10;"/></port>
 <port protocol="tcp" portid="3306"><state state="open" reason="syn-ack"/><service name="mysql" method="probed"/></port>
 </ports></host>
 <host><address addr="192.168.1.11" addrtype="ipv4"/>
