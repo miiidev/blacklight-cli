@@ -18,7 +18,10 @@ seams. Keep this current when modules are added or renamed.
   guardrails verify → confirm → execute → log → record → render → export. One
   entry (`engine.run(executor, targets, params, confirm, on_progress)`), two
   executor adapters (network, web) that each expose `verify(...) -> Verdict`
-  and `run(...) -> ScanResult`. Lives in a new `blacklight/engine.py`.
+  and `run(...) -> ScanResult`. Lives in a new `blacklight/engine.py`. All
+  consumers (cli, console `CommandRunner`, TUI) wire to this one seam; console
+  and TUI inject a single `run(kind, targets, kwargs)` callable into
+  `CommandRunner`/`BlacklightApp`.
 - **executor adapter** — `NetworkScan` / `WebScan`; the two genuine variants
   behind the orchestrator seam. Two adapters make the seam real.
 - **permission** — the authorization signal: `--i-have-permission`,
