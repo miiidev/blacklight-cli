@@ -36,6 +36,7 @@ SCAN_MODULE = Module(
         "OUTPUT": Option("", "Export report to a file (html/markdown/json)"),
         "FORMAT": Option("html", "Export format: html, markdown, json"),
         "NO_CACHE": Option("false", "Bypass the local NVD/EPSS cache"),
+        "NO_TLS_CHECKS": Option("false", "Skip TLS cert/protocol/cipher checks (default false)"),
         "TIMEOUT": Option("30", "Per-host nmap scan timeout in seconds"),
         "PERMISSION": Option("false", "Set true if authorized to scan public targets"),
     },
@@ -102,6 +103,7 @@ def module_run_args(state: ConsoleState) -> tuple[str | None, list[str], dict]:
     }
     if module.name == "scan":
         kwargs["ports"] = state.current_value("PORTS")
+        kwargs["tls_checks"] = state.current_value("NO_TLS_CHECKS") != "true"
     return None, targets, kwargs
 
 
@@ -220,10 +222,10 @@ class CommandRunner:
             console.print(f"[red]Unknown option: {name}[/] "
                           f"Valid: {', '.join(module.options)}")
             return
-        if name == "PERMISSION" and value.lower() not in ("true", "false"):
-            console.print("[red]PERMISSION expects true or false.[/]")
+        if name in ("PERMISSION", "NO_TLS_CHECKS") and value.lower() not in ("true", "false"):
+            console.print(f"[red]{name} expects true or false.[/]")
             return
-        self.state.values[name] = value.lower() if name == "PERMISSION" else value
+        self.state.values[name] = value.lower() if name in ("PERMISSION", "NO_TLS_CHECKS") else value
         console.print(f"{name} => {self.state.values[name]}")
 
     def _unset(self, args: list[str], console: Console) -> None:
@@ -314,6 +316,7 @@ class ConsoleApp:
             permission_granted=kwargs.get("permission_granted", False),
             timeout=kwargs.get("timeout", 30),
             no_cache=kwargs.get("no_cache", False),
+            tls_checks=kwargs.get("tls_checks", True),
             ports=kwargs.get("ports"),
             output=kwargs.get("output"),
             fmt=kwargs.get("fmt", "html"),

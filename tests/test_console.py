@@ -73,6 +73,11 @@ def test_set_permission_rejects_non_boolean():
     assert "PERMISSION expects true or false" in out
 
 
+def test_set_no_tls_checks_rejects_non_boolean():
+    _, out = run_commands(["use scan", "set NO_TLS_CHECKS maybe"])
+    assert "NO_TLS_CHECKS expects true or false" in out
+
+
 def test_set_before_use_hints():
     _, out = run_commands(["set TARGET 192.168.1.10"])
     assert "No module selected" in out
@@ -387,3 +392,14 @@ def test_module_run_args_builds_scan_kwargs():
     assert kwargs["permission_granted"] is True
     assert kwargs["fmt"] == "html"
     assert kwargs["ports"] == "1-1024"
+    assert kwargs["tls_checks"] is True
+
+
+def test_module_run_args_no_tls_checks_default_true():
+    from blacklight.console import ConsoleState, module_run_args, SCAN_MODULE
+
+    state = ConsoleState(modules={"scan": SCAN_MODULE})
+    state.active = "scan"
+    state.values["TARGET"] = "192.168.1.10"
+    _, _, kwargs = module_run_args(state)
+    assert kwargs["tls_checks"] is True

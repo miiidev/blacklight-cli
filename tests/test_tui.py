@@ -38,7 +38,7 @@ def test_tui_lists_modules_and_activates_scan():
             await pilot.press("enter")  # select first module (scan)
             await pilot.pause()
             assert app.runner.state.active == "scan"
-            assert table.row_count == 7  # scan module options
+            assert table.row_count == 8  # scan module options
             await pilot.press("q")
 
     asyncio.run(scenario())
