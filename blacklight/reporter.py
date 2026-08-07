@@ -13,6 +13,7 @@ from blacklight import __version__, theme
 from blacklight.cve_matcher import Finding
 from blacklight.scoring import host_risk_score, web_risk_score
 from blacklight.theme import ACCENT, CYAN, PURPLE, SEVERITY_STYLE, risk_gauge
+from blacklight.tls import TlsFinding
 from blacklight.web.models import WebFinding
 
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
@@ -58,6 +59,27 @@ def findings_table(findings: list[Finding]) -> Table:
             kev,
             style=SEVERITY_STYLE.get(finding.severity, ""),
         )
+    return table
+
+
+def tls_findings_table(tls_findings: list[TlsFinding]) -> Table:
+    """Rich table of TLS findings, most severe first."""
+    table = Table(
+        title="TLS findings",
+        expand=True,
+        border_style=CYAN,
+        header_style=f"bold {PURPLE}",
+    )
+    for col in ("Host", "Port", "Service", "Category", "Severity", "Detail", "Evidence"):
+        table.add_column(col)
+    order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "unknown": 4}
+    for finding in sorted(tls_findings, key=lambda f: order.get(f.severity, 4)):
+        detail = finding.detail
+        if finding.cve_id:
+            detail = f"{finding.cve_id}: {detail}"
+        table.add_row(finding.host, str(finding.port), finding.service, finding.category,
+                      finding.severity, detail, finding.evidence,
+                      style=SEVERITY_STYLE.get(finding.severity, ""))
     return table
 
 
@@ -135,7 +157,8 @@ def render_terminal(result, console: Console | None = None) -> None:
             Panel(
                 f"[bold {ACCENT}]blacklight-cli[/] v{__version__} - scan report\n"
                 f"Targets: [bold]{meta.targets}[/] | Hosts scanned: {meta.hosts_scanned} | "
-                f"Services found: {meta.services_found} | Findings: {meta.findings_count}",
+                f"Services found: {meta.services_found} | Findings: {meta.findings_count} | "
+                f"TLS findings: {getattr(meta, 'tls_findings_count', 0)}",
                 title="Summary",
                 border_style=PURPLE,
                 title_align="center",
@@ -157,6 +180,8 @@ def render_terminal(result, console: Console | None = None) -> None:
         console.print(score_table)
     if result.findings:
         console.print(findings_table(result.findings))
+    if result.tls_findings:
+        console.print(tls_findings_table(result.tls_findings))
     console.print(
         Panel(
             "Risk score: severity-weighted base (capped at 60) + 10 per KEV finding "
@@ -176,6 +201,7 @@ def export_report(result, fmt: str, output: Path) -> Path:
         "meta": asdict(meta),
         "findings": [f.to_dict() for f in result.findings],
         "hosts": host_risk_table(result.findings),
+        "tls": [f.to_dict() for f in result.tls_findings],
         "web": (
             {"meta": asdict(meta), "findings": [f.to_dict() for f in result.web_findings]}
             if result.kind == "web"

@@ -4,7 +4,8 @@ import pytest
 from rich.console import Console
 
 from blacklight.cve_matcher import Finding
-from blacklight.reporter import export_report, findings_table, host_risk_table, render_terminal
+from blacklight.reporter import (export_report, findings_table, host_risk_table,
+                                 render_terminal, tls_findings_table)
 
 META = {"targets": "192.168.1.10", "hosts_scanned": 1, "services_found": 2,
         "findings_count": 2, "generated": "2030-01-01T00:00:00+00:00"}
@@ -146,3 +147,48 @@ def test_render_terminal_risk_gauge_in_score_table():
     text = console.export_text()
     assert "░" in text
     assert "█" in text
+
+
+from blacklight.tls import TlsFinding
+
+
+def _tls_finding(severity="high", cve_id="TLS-EXPIRED", detail="expired") -> TlsFinding:
+    return TlsFinding(host="192.168.1.10", port=443, service="https",
+                      category="expiry", detail=detail, evidence="notAfter 2029-01-01",
+                      severity=severity, cve_id=cve_id)
+
+
+def _tls_result():
+    from blacklight.engine import NetworkMeta, ScanResult
+
+    return ScanResult(
+        kind="scan", target="192.168.1.10", generated="2030-01-01T00:00:00+00:00",
+        findings=[], web_findings=[],
+        tls_findings=[_tls_finding()],
+        meta=NetworkMeta(targets="192.168.1.10", hosts_scanned=1, services_found=1,
+                         findings_count=0, tls_findings_count=1,
+                         generated="2030-01-01T00:00:00+00:00"))
+
+
+def test_tls_findings_table_columns():
+    table = tls_findings_table([_tls_finding()])
+    assert table.title == "TLS findings"
+    assert [c.header for c in table.columns] == ["Host", "Port", "Service",
+                                                 "Category", "Severity", "Detail", "Evidence"]
+
+
+def test_render_terminal_includes_tls_section():
+    import io
+    from rich.console import Console
+
+    out = io.StringIO()
+    render_terminal(_tls_result(), Console(file=out, width=160))
+    text = out.getvalue()
+    assert "TLS findings" in text
+    assert "TLS-EXPIRED" in text
+
+
+def test_export_json_includes_tls(tmp_path):
+    out = export_report(_tls_result(), "json", tmp_path / "tls.json")
+    data = json.loads(out.read_text(encoding="utf-8"))
+    assert data["tls"][0]["cve_id"] == "TLS-EXPIRED"
