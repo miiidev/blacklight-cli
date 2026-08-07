@@ -1,6 +1,6 @@
 import pytest
 
-from blacklight.scanner import ScanRecord, TlsData, parse_nmap_xml
+from blacklight.scanner import ScanRecord, TlsData, parse_nmap_xml, scan_hosts
 
 
 def test_parse_nmap_xml_skips_closed_ports(nmap_xml):
@@ -45,3 +45,29 @@ def test_parse_nmap_xml_empty_scan():
 def test_parse_nmap_xml_rejects_non_xml():
     with pytest.raises(ValueError):
         parse_nmap_xml("not xml at all")
+
+
+def test_scan_hosts_adds_tls_scripts(monkeypatch):
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return type("P", (), {"stdout": "<nmaprun/>", "stderr": ""})()
+
+    monkeypatch.setattr("blacklight.scanner.subprocess.run", fake_run)
+    scan_hosts(["192.168.1.10"])
+    assert "--script" in captured["cmd"]
+    assert "ssl-cert,ssl-enum-ciphers" in captured["cmd"]
+    assert captured["cmd"][0] == "nmap"
+
+
+def test_scan_hosts_omits_tls_scripts_when_disabled(monkeypatch):
+    captured = {}
+
+    def fake_run(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return type("P", (), {"stdout": "<nmaprun/>", "stderr": ""})()
+
+    monkeypatch.setattr("blacklight.scanner.subprocess.run", fake_run)
+    scan_hosts(["192.168.1.10"], tls_checks=False)
+    assert "--script" not in captured["cmd"]

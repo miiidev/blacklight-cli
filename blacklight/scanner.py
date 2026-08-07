@@ -39,15 +39,17 @@ def find_nmap() -> str | None:
     return "nmap" if result.returncode == 0 else None
 
 
-def scan_hosts(targets: list[str], ports: str = "1-1024", timeout: int = 30) -> list[ScanRecord]:
+def scan_hosts(targets: list[str], ports: str = "1-1024", timeout: int = 30,
+               tls_checks: bool = True) -> list[ScanRecord]:
     """Run nmap with service/version detection and return parsed records.
 
-    Raises RuntimeError if nmap produced no XML output.
+    TLS checks run ssl-cert + ssl-enum-ciphers on the ports nmap detects as
+    SSL/TLS. Raises RuntimeError if nmap produced no XML output.
     """
-    cmd = [
-        "nmap", "-sV", "-p", ports, "-oX", "-",
-        "--host-timeout", f"{timeout}s", "--", *targets,
-    ]
+    cmd = ["nmap", "-sV"]
+    if tls_checks:
+        cmd += ["--script", "ssl-cert,ssl-enum-ciphers"]
+    cmd += ["-p", ports, "-oX", "-", "--host-timeout", f"{timeout}s", "--", *targets]
     proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout * 2 + 120)
     if not proc.stdout.strip():
         stderr_tail = proc.stderr.strip()[-500:]
