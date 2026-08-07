@@ -162,7 +162,7 @@ def test_build_findings_prefers_nmap_cpe(monkeypatch):
             return []
 
     record = ScanRecord(host="192.168.1.10", port=443, protocol="tcp",
-                        service="nginx", version="1.24.0",
+                        service="nginx", version="1.24",
                         cpe="cpe:/a:nginx:nginx:1.24.0")
     assert build_findings([record], RecordingClient()) == []
     assert captured["cpe"] == "cpe:2.3:a:nginx:nginx:1.24.0:*:*:*:*:*:*:*"
@@ -178,9 +178,9 @@ def test_build_findings_fills_versionless_nmap_cpe(monkeypatch):
 
     record = ScanRecord(host="192.168.1.11", port=8080, protocol="tcp",
                         service="Apache httpd", version="2.4.58",
-                        cpe="cpe:/a:apache:http_server")
+                        cpe="cpe:/a:apache:httpd")
     assert build_findings([record], RecordingClient()) == []
-    assert captured["cpe"] == "cpe:2.3:a:apache:http_server:2.4.58:*:*:*:*:*:*:*"
+    assert captured["cpe"] == "cpe:2.3:a:apache:httpd:2.4.58:*:*:*:*:*:*:*"
 
 
 def test_build_findings_falls_back_to_dict_without_nmap_cpe(monkeypatch):
