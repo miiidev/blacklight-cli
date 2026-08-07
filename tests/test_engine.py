@@ -216,3 +216,45 @@ def test_run_reports_missing_nmap(monkeypatch, capsys):
     code = run(NetworkScan(), ["192.168.1.10"], _params(), confirm=never_confirm)
     assert code == 1
     assert "nmap not found" in capsys.readouterr().out
+
+
+def test_run_records_web_history_typed(monkeypatch, tmp_path):
+    from blacklight import history
+    from blacklight.engine import WebScan, run
+
+    page = _page(headers={"X-Frame-Options": "DENY"})
+    monkeypatch.setattr("blacklight.engine.http.fetch_page", lambda *a, **k: page)
+    monkeypatch.setattr("blacklight.engine.http.probe",
+                        lambda *a, **k: type("P", (), {"status": 200, "text": "ok"})())
+    monkeypatch.setattr("blacklight.engine.guardrails.resolve_hostname",
+                        lambda host: "10.0.0.2")
+    monkeypatch.setattr("blacklight.engine.paths.HISTORY_DB", tmp_path / "history.db")
+    monkeypatch.setattr("blacklight.engine.paths.SCAN_LOG", tmp_path / "scan.log")
+    monkeypatch.setattr("blacklight.engine.NvdClient", _FakeClient)
+    monkeypatch.setattr("blacklight.engine.enrichment.enrich_findings",
+                        lambda findings, **k: findings)
+    code = run(WebScan(), ["http://10.0.0.2/"], _params(), confirm=never_confirm)
+    assert code == 0
+    rows = history.list_recent()
+    assert len(rows) == 1
+    assert rows[0].kind == "web"
+    assert rows[0].target == "http://10.0.0.2/"
+
+
+def test_record_scan_network_typed(tmp_path):
+    from blacklight import history
+    from blacklight.engine import NetworkMeta, NetworkScan, ScanResult
+
+    result = ScanResult(
+        kind="scan", target="192.168.1.10",
+        generated="2026-08-04T10:00:00+00:00",
+        findings=[], web_findings=[],
+        meta=NetworkMeta(targets="192.168.1.10", hosts_scanned=1, services_found=2,
+                         findings_count=0, generated="2026-08-04T10:00:00+00:00"),
+    )
+    history.record_scan(result, False)
+    rows = history.list_recent()
+    assert len(rows) == 1
+    assert rows[0].target == "192.168.1.10"
+    assert rows[0].hosts == 1
+    assert rows[0].services == 2

@@ -316,13 +316,21 @@ def test_confirm_modal_answers_with_y_and_n_keys():
         assert pushed == [expected]
 
 
+def _scan_result(generated):
+    from blacklight.engine import NetworkMeta, ScanResult
+
+    return ScanResult(
+        kind="scan", target="192.168.1.10", generated=generated,
+        findings=[], web_findings=[],
+        meta=NetworkMeta(targets="192.168.1.10", hosts_scanned=1,
+                         services_found=1, findings_count=0, generated=generated),
+    )
+
+
 def test_tui_history_screen_lists_scans(monkeypatch, tmp_path):
     from blacklight import history
     monkeypatch.setattr("blacklight.paths.HOME_DIR", tmp_path)
-    history.record_scan("scan", "192.168.1.10", False, {
-        "hosts_scanned": 1, "services_found": 1, "findings_count": 0,
-        "generated": "2026-08-04T10:00:00+00:00",
-    }, [])
+    history.record_scan(_scan_result("2026-08-04T10:00:00+00:00"), False)
     app = make_app()
 
     async def scenario():
@@ -347,14 +355,8 @@ def test_tui_uses_tokyo_night_theme():
 def test_tui_history_enter_shows_diff(monkeypatch, tmp_path):
     from blacklight import history
     monkeypatch.setattr("blacklight.paths.HOME_DIR", tmp_path)
-    history.record_scan("scan", "192.168.1.10", False, {
-        "hosts_scanned": 1, "services_found": 1, "findings_count": 0,
-        "generated": "2026-08-04T10:00:00+00:00",
-    }, [])
-    history.record_scan("scan", "192.168.1.10", False, {
-        "hosts_scanned": 1, "services_found": 1, "findings_count": 0,
-        "generated": "2026-08-04T11:00:00+00:00",
-    }, [])
+    history.record_scan(_scan_result("2026-08-04T10:00:00+00:00"), False)
+    history.record_scan(_scan_result("2026-08-04T11:00:00+00:00"), False)
     app = make_app()
 
     async def scenario():

@@ -21,6 +21,19 @@ def run_commands(lines, runner=None):
     return runner, out.getvalue()
 
 
+def _scan_result(generated, findings=None, services=1):
+    from blacklight.engine import NetworkMeta, ScanResult
+
+    findings = findings or []
+    return ScanResult(
+        kind="scan", target="192.168.1.10", generated=generated,
+        findings=findings, web_findings=[],
+        meta=NetworkMeta(targets="192.168.1.10", hosts_scanned=1,
+                         services_found=services,
+                         findings_count=len(findings), generated=generated),
+    )
+
+
 def test_help_lists_all_commands():
     _, out = run_commands(["help"])
     for word in ("help", "modules", "use", "show options", "set", "unset",
@@ -247,10 +260,7 @@ def test_console_history_lists_scans(monkeypatch):
     monkeypatch.setenv("COLUMNS", "200")
     from blacklight import history
 
-    history.record_scan("scan", "192.168.1.10", False, {
-        "hosts_scanned": 1, "services_found": 1, "findings_count": 0,
-        "generated": "2026-08-04T10:00:00+00:00",
-    }, [])
+    history.record_scan(_scan_result("2026-08-04T10:00:00+00:00"), False)
     _, out = run_commands(["history"])
     assert "192.168.1.10" in out
 
@@ -271,9 +281,8 @@ def test_console_history_with_target_diffs():
         severity="high", fixed_version="9.7")
     meta = {"hosts_scanned": 1, "services_found": 1, "findings_count": 1,
             "generated": "2026-08-04T10:00:00+00:00"}
-    history.record_scan("scan", "192.168.1.10", False, meta, [finding])
-    history.record_scan("scan", "192.168.1.10", False,
-                        dict(meta, generated="2026-08-04T11:00:00+00:00"), [])
+    history.record_scan(_scan_result("2026-08-04T10:00:00+00:00", [finding]), False)
+    history.record_scan(_scan_result("2026-08-04T11:00:00+00:00"), False)
     _, out = run_commands(["history 192.168.1.10"])
     assert "Risk score:" in out
     assert "improved" in out
@@ -292,11 +301,8 @@ def test_console_history_usage_error():
 def test_console_trend_renders():
     from blacklight import history
 
-    meta = {"hosts_scanned": 1, "services_found": 1, "findings_count": 0,
-            "generated": "2026-08-04T10:00:00+00:00"}
-    history.record_scan("scan", "192.168.1.10", False, meta, [])
-    history.record_scan("scan", "192.168.1.10", False,
-                        dict(meta, generated="2026-08-04T11:00:00+00:00"), [])
+    history.record_scan(_scan_result("2026-08-04T10:00:00+00:00"), False)
+    history.record_scan(_scan_result("2026-08-04T11:00:00+00:00"), False)
     _, out = run_commands(["trend 192.168.1.10"])
     assert "Risk trend for 192.168.1.10" in out
     assert "0.0" in out

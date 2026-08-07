@@ -90,20 +90,29 @@ def _web_fingerprint(w: WebFinding) -> str:
     return f"{w.url}|{w.category}|{w.detail}"
 
 
-def record_scan(kind: str, target: str, permission: bool,
-                meta: dict, findings: list) -> None:
-    """Persist one completed scan; findings are Finding or WebFinding rows."""
+def record_scan(result, permission: bool) -> None:
+    """Persist one completed run (a typed ScanResult + its permission flag).
+
+    ``result`` only needs the ScanResult contract (kind, target, meta,
+    findings/web_findings); engine is not imported here to avoid a cycle.
+    """
     conn = _connect()
     try:
+        kind = result.kind
+        meta = result.meta
         if kind == "scan":
-            hosts, services = meta["hosts_scanned"], meta["services_found"]
-            count = meta["findings_count"]
+            hosts, services = meta.hosts_scanned, meta.services_found
+            count = meta.findings_count
+            target = result.target
+            findings = result.findings
         else:
-            hosts, services, count = 0, 0, len(findings)
+            hosts, services, count = 0, 0, len(result.web_findings)
+            target = result.target
+            findings = result.web_findings
         cur = conn.execute(
             "INSERT INTO scans (kind, target, permission, scanned_at, hosts,"
             " services, findings_count) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (kind, target, 1 if permission else 0, meta["generated"],
+            (kind, target, 1 if permission else 0, meta.generated,
              hosts, services, count),
         )
         scan_id = cur.lastrowid

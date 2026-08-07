@@ -340,9 +340,7 @@ def run(
         return 1
     _log_result(executor.kind, result, params.permission_granted)
     try:
-        history.record_scan(executor.kind, result.target, params.permission_granted,
-                            _legacy_meta(result),
-                            result.findings or result.web_findings)
+        history.record_scan(result, params.permission_granted)
     except (OSError, sqlite3.Error) as exc:
         console.print(f"[yellow]Could not record scan history:[/] {exc}")
     if result.kind == "web":

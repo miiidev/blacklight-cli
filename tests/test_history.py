@@ -44,9 +44,28 @@ def net_finding(host="192.168.1.10", port=22, service="OpenSSH", version="9.6p1"
     )
 
 
+def _scan_result(kind, target, generated, findings, services=2):
+    from blacklight.engine import NetworkMeta, ScanResult, WebMeta
+
+    findings = findings or []
+    if kind == "scan":
+        meta = NetworkMeta(targets=target, hosts_scanned=1,
+                           services_found=services,
+                           findings_count=len(findings), generated=generated)
+        return ScanResult(kind=kind, target=target, generated=generated,
+                          findings=findings, web_findings=[], meta=meta)
+    meta = WebMeta(url=target, host="example.com", resolved_ip="1.2.3.4",
+                   checks_run=1, checks_errored=0, cve_findings=len(findings),
+                   generated=generated)
+    return ScanResult(kind=kind, target=target, generated=generated,
+                      findings=[], web_findings=findings, meta=meta)
+
+
 def test_record_scan_network_stores_scan_and_findings():
-    record_scan("scan", "192.168.1.10", False, NET_META,
-                [net_finding(in_kev=True), net_finding(port=80, service="httpd", cve_id="")])
+    record_scan(_scan_result("scan", "192.168.1.10", NET_META["generated"],
+                             [net_finding(in_kev=True),
+                              net_finding(port=80, service="httpd", cve_id="")]),
+                False)
     rows = list_recent()
     assert len(rows) == 1
     record = rows[0]
@@ -78,7 +97,9 @@ def test_record_web_uses_web_fingerprint_and_zero_counts():
         detail="X-Frame-Options not set", severity="medium",
         evidence="header absent", cve_id="CVE-2024-0002", epss=0.1, in_kev=True,
     )
-    record_scan("web", "https://example.com", True, WEB_META, [finding])
+    record_scan(_scan_result("web", "https://example.com",
+                             WEB_META["generated"], [finding]),
+                True)
     rows = list_recent()
     assert len(rows) == 1
     record = rows[0]
@@ -102,9 +123,9 @@ def test_record_web_uses_web_fingerprint_and_zero_counts():
 
 
 def test_list_recent_orders_newest_first_and_limits():
-    record_scan("scan", "a.local", False, dict(NET_META, generated="2026-08-01T00:00:00+00:00"), [])
-    record_scan("scan", "b.local", False, dict(NET_META, generated="2026-08-02T00:00:00+00:00"), [])
-    record_scan("scan", "c.local", False, dict(NET_META, generated="2026-08-03T00:00:00+00:00"), [])
+    record_scan(_scan_result("scan", "a.local", "2026-08-01T00:00:00+00:00", []), False)
+    record_scan(_scan_result("scan", "b.local", "2026-08-02T00:00:00+00:00", []), False)
+    record_scan(_scan_result("scan", "c.local", "2026-08-03T00:00:00+00:00", []), False)
     rows = list_recent(limit=2)
     assert [r.target for r in rows] == ["c.local", "b.local"]
     rows = list_recent()
@@ -116,15 +137,12 @@ def test_list_recent_empty_returns_no_rows():
 
 
 def test_record_creates_db_at_paths_history_db():
-    record_scan("scan", "x.local", False, NET_META, [])
+    record_scan(_scan_result("scan", "x.local", NET_META["generated"], []), False)
     assert paths.HISTORY_DB.exists()
 
 
 def _record_scan_at(kind, target, generated, findings, permission=False):
-    meta = dict(NET_META) if kind == "scan" else dict(WEB_META)
-    meta["generated"] = generated
-    meta["findings_count"] = len(findings)
-    record_scan(kind, target, permission, meta, findings)
+    record_scan(_scan_result(kind, target, generated, findings), permission)
 
 
 def test_parse_since_forms():

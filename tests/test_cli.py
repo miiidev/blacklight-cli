@@ -392,14 +392,18 @@ def test_execute_web_records_history(monkeypatch, tmp_path):
 
 
 def test_history_list_after_scan(monkeypatch, tmp_path):
-    from blacklight import history
-    history.record_scan("scan", "192.168.1.10", False, {
-        "hosts_scanned": 1, "services_found": 1, "findings_count": 0,
-        "generated": "2026-08-04T10:00:00+00:00",
-    }, [])
-    result = runner.invoke(app, ["history"], env={"COLUMNS": "200"})
-    assert result.exit_code == 0
-    assert "192.168.1.10" in result.output
+    from blacklight import engine, history
+    result = engine.ScanResult(
+        kind="scan", target="192.168.1.10", generated="2026-08-04T10:00:00+00:00",
+        findings=[], web_findings=[],
+        meta=engine.NetworkMeta(targets="192.168.1.10", hosts_scanned=1,
+                                services_found=1, findings_count=0,
+                                generated="2026-08-04T10:00:00+00:00"),
+    )
+    history.record_scan(result, False)
+    result2 = runner.invoke(app, ["history"], env={"COLUMNS": "200"})
+    assert result2.exit_code == 0
+    assert "192.168.1.10" in result2.output
 
 
 def test_history_list_empty_exits_zero():
@@ -409,14 +413,18 @@ def test_history_list_empty_exits_zero():
 
 
 def test_history_diff_no_previous_scan_exits_zero():
-    from blacklight import history
-    history.record_scan("scan", "192.168.1.10", False, {
-        "hosts_scanned": 1, "services_found": 1, "findings_count": 0,
-        "generated": "2026-08-04T10:00:00+00:00",
-    }, [])
-    result = runner.invoke(app, ["history", "diff", "192.168.1.10"])
-    assert result.exit_code == 0
-    assert "No previous scan of 192.168.1.10" in result.output
+    from blacklight import engine, history
+    result = engine.ScanResult(
+        kind="scan", target="192.168.1.10", generated="2026-08-04T10:00:00+00:00",
+        findings=[], web_findings=[],
+        meta=engine.NetworkMeta(targets="192.168.1.10", hosts_scanned=1,
+                                services_found=1, findings_count=0,
+                                generated="2026-08-04T10:00:00+00:00"),
+    )
+    history.record_scan(result, False)
+    out = runner.invoke(app, ["history", "diff", "192.168.1.10"])
+    assert out.exit_code == 0
+    assert "No previous scan of 192.168.1.10" in out.output
 
 
 def test_history_diff_unknown_target_exits_zero():
