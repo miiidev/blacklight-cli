@@ -211,3 +211,22 @@ def test_export_markdown_includes_tls_section(tmp_path):
 def test_export_html_without_tls_omits_section(tmp_path):
     out = export_report(_result([_finding()]), "html", tmp_path / "plain.html")
     assert "TLS findings" not in out.read_text(encoding="utf-8")
+
+
+def test_host_risk_table_folds_tls_findings():
+    rows = host_risk_table(
+        [_finding(host="10.0.0.1", severity="low", in_kev=False, epss=0.0)],
+        tls_findings=[_tls_finding()],
+    )
+    by_host = {row["host"]: row for row in rows}
+    assert by_host["192.168.1.10"]["score"] == 10.0
+    assert by_host["192.168.1.10"]["findings"] == 1
+    assert by_host["10.0.0.1"]["score"] == 1.0
+
+
+def test_render_terminal_host_risk_includes_tls():
+    console = Console(record=True, width=160)
+    render_terminal(_tls_result(), console=console)
+    text = console.export_text()
+    assert "Host risk scores" in text
+    assert "10.0" in text

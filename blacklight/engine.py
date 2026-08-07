@@ -272,7 +272,7 @@ def _log_result(kind: str, result: ScanResult, permission: bool) -> None:
         line = (
             f"{result.generated} target={result.target} permission={permission} "
             f"hosts={meta.hosts_scanned} services={meta.services_found} "
-            f"findings={meta.findings_count}\n"
+            f"findings={meta.findings_count + len(result.tls_findings)}\n"
         )
     else:
         line = (

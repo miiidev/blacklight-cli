@@ -317,3 +317,31 @@ def test_record_scan_network_typed(tmp_path):
     assert rows[0].target == "192.168.1.10"
     assert rows[0].hosts == 1
     assert rows[0].services == 2
+
+
+def test_run_logs_scan_and_tls_findings_in_line(monkeypatch, tmp_path):
+    from blacklight.engine import NetworkScan, ScanParams, run
+    from blacklight.scanner import ScanRecord, TlsData
+
+    tls_data = TlsData(
+        ssl_cert_output="Subject: commonName=x\nIssuer: commonName=x\n",
+        ssl_ciphers_output=(
+            "SSLv3:\n  cipher suites:\n    TLS_RSA_WITH_NULL_SHA (rsa 2048) - C\n"
+        ),
+    )
+    records = [ScanRecord(host="192.168.1.10", port=443, protocol="tcp",
+                          service="https", version="1.24.0", tls=tls_data)]
+    monkeypatch.setattr("blacklight.engine.scanner.scan_hosts", lambda *a, **k: records)
+    monkeypatch.setattr("blacklight.engine.scanner.find_nmap", lambda: "nmap")
+    monkeypatch.setattr("blacklight.engine.os", SimpleNamespace(environ={}))
+    monkeypatch.setattr("blacklight.engine.paths.CACHE_DIR", tmp_path)
+    monkeypatch.setattr("blacklight.engine.paths.SCAN_LOG", tmp_path / "scan.log")
+    monkeypatch.setattr("blacklight.engine.NvdClient", _FakeClient)
+    monkeypatch.setattr("blacklight.engine.enrichment.enrich_findings",
+                        lambda findings, **k: findings)
+    params = ScanParams(permission_granted=True, timeout=30, no_cache=False,
+                        tls_checks=True, ports="443", output=None, fmt="html")
+    code = run(NetworkScan(), ["192.168.1.10"], params, confirm=never_confirm)
+    assert code == 0
+    line = (tmp_path / "scan.log").read_text(encoding="utf-8")
+    assert "findings=4" in line

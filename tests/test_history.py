@@ -393,6 +393,24 @@ def test_record_scan_stores_tls_rows():
     assert cvss is None
     assert epss == 0.0
     assert in_kev == 0
+    conn = sqlite3.connect(paths.HISTORY_DB)
+    count = conn.execute("SELECT findings_count FROM scans").fetchone()[0]
+    conn.close()
+    assert count == 1
+
+
+def test_record_scan_network_without_tls_attr_uses_meta_count():
+    from types import SimpleNamespace
+
+    result = SimpleNamespace(
+        kind="scan", target="192.168.1.10", generated=NET_META["generated"],
+        findings=[], web_findings=[],
+        meta=SimpleNamespace(hosts_scanned=1, services_found=2,
+                             findings_count=3, generated=NET_META["generated"]),
+    )
+    record_scan(result, False)
+    record = list_recent()[0]
+    assert record.findings_count == 3
 
 
 def test_tls_rows_feed_diff_and_score():

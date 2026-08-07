@@ -102,7 +102,7 @@ def record_scan(result, permission: bool) -> None:
         meta = result.meta
         if kind == "scan":
             hosts, services = meta.hosts_scanned, meta.services_found
-            count = meta.findings_count
+            count = meta.findings_count + len(getattr(result, "tls_findings", []))
             target = result.target
             findings = result.findings
         else:

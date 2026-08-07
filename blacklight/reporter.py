@@ -83,10 +83,13 @@ def tls_findings_table(tls_findings: list[TlsFinding]) -> Table:
     return table
 
 
-def host_risk_table(findings: list[Finding]) -> list[dict]:
+def host_risk_table(findings: list[Finding],
+                    tls_findings: list[TlsFinding] | None = None) -> list[dict]:
     """Per-host risk rows {host, score, findings} sorted by score descending."""
-    by_host: dict[str, list[Finding]] = {}
+    by_host: dict[str, list] = {}
     for finding in findings:
+        by_host.setdefault(finding.host, []).append(finding)
+    for finding in tls_findings or []:
         by_host.setdefault(finding.host, []).append(finding)
     rows = [
         {"host": host, "score": host_risk_score(fs), "findings": len(fs)}
@@ -164,7 +167,7 @@ def render_terminal(result, console: Console | None = None) -> None:
                 title_align="center",
             )
         )
-    hosts = host_risk_table(result.findings)
+    hosts = host_risk_table(result.findings, result.tls_findings)
     if hosts:
         score_table = Table(
             title="Host risk scores",
@@ -200,7 +203,7 @@ def export_report(result, fmt: str, output: Path) -> Path:
     payload = {
         "meta": asdict(meta),
         "findings": [f.to_dict() for f in result.findings],
-        "hosts": host_risk_table(result.findings),
+        "hosts": host_risk_table(result.findings, result.tls_findings),
         "tls": [f.to_dict() for f in result.tls_findings],
         "web": (
             {"meta": asdict(meta), "findings": [f.to_dict() for f in result.web_findings]}
