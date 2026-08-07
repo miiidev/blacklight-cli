@@ -47,23 +47,23 @@ class _CaptureStream:
 def capture_engine_output(on_line):
     """Route engine console writes into the TUI instead of stdout.
 
-    The engines print progress and results through a module-level rich
+    The engine prints progress and results through a module-level rich
     Console bound to stdout. Under the TUI that stdout is Textual's
     alternate screen, so every write corrupts the display and forces
     repaints. Swap the shared console (and fresh consoles created per
     call via sys.stdout) for a plain capture that forwards lines to the
     UI thread instead.
     """
-    from blacklight import cli, theme
+    from blacklight import engine, theme
 
     sink = _CaptureStream(on_line)
-    saved = cli.console
-    cli.console = theme.make_console(file=sink)
+    saved = engine.console
+    engine.set_console(theme.make_console(file=sink))
     try:
         with contextlib.redirect_stdout(sink), contextlib.redirect_stderr(sink):
             yield
     finally:
-        cli.console = saved
+        engine.set_console(saved)
         sink.flush()
 
 
@@ -224,10 +224,10 @@ class RunScreen(Screen):
                     budget = (kwargs.get("timeout") or 30) * 2 + 120
                     self.app.call_from_thread(self._start_progress, budget)
                     kwargs["on_progress"] = self._on_progress
-                    code = self.app.runner.execute_scan(targets, **kwargs)
+                    code = self.app.runner.run("scan", targets, kwargs)
                 else:
                     self.app.call_from_thread(self._start_progress, 60)
-                    code = self.app.runner.execute_web(targets[0], **kwargs)
+                    code = self.app.runner.run("web", targets[:1], kwargs)
             self._finish_progress()
         except Exception as exc:
             self._log(f"Scan failed: {exc}")

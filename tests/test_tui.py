@@ -5,19 +5,13 @@ import pytest
 from blacklight.tui.app import BlacklightApp
 
 
-def make_app(execute_scan=None, execute_web=None):
+def make_app(run=None):
     from blacklight.tui.app import BlacklightApp
 
-    def default_scan(targets, **kwargs):
+    def default_run(kind, targets, kwargs):
         return 0
 
-    def default_web(target, **kwargs):
-        return 0
-
-    return BlacklightApp(
-        execute_scan=execute_scan or default_scan,
-        execute_web=execute_web or default_web,
-    )
+    return BlacklightApp(run=run or default_run)
 
 
 def test_tui_launches_and_quits():
@@ -71,14 +65,14 @@ def test_tui_edits_option_value():
     asyncio.run(scenario())
 
 
-def test_tui_run_invokes_execute_scan_with_args():
+def test_tui_run_invokes_run_with_args():
     calls = []
 
-    def recording_scan(targets, **kwargs):
-        calls.append((targets, kwargs))
+    def recording_run(kind, targets, kwargs):
+        calls.append((kind, targets, kwargs))
         return 0
 
-    app = make_app(execute_scan=recording_scan)
+    app = make_app(run=recording_run)
 
     async def scenario():
         async with app.run_test() as pilot:
@@ -96,22 +90,23 @@ def test_tui_run_invokes_execute_scan_with_args():
             await pilot.pause()
             await pilot.pause()
             assert len(calls) == 1
-            assert calls[0][0] == ["192.168.1.10"]
-            assert calls[0][1]["timeout"] == 30
+            assert calls[0][0] == "scan"
+            assert calls[0][1] == ["192.168.1.10"]
+            assert calls[0][2]["timeout"] == 30
             await pilot.press("q")
 
     asyncio.run(scenario())
 
 
 def test_tui_run_captures_engine_console(capsys):
-    from blacklight import cli
+    from blacklight import engine
 
-    def noisy_scan(targets, **kwargs):
-        cli.console.print("ENGINE-PROGRESS-LINE")
-        cli.console.print("second engine line")
+    def noisy_run(kind, targets, kwargs):
+        engine.console.print("ENGINE-PROGRESS-LINE")
+        engine.console.print("second engine line")
         return 0
 
-    app = make_app(execute_scan=noisy_scan)
+    app = make_app(run=noisy_run)
 
     async def scenario():
         async with app.run_test() as pilot:
@@ -141,13 +136,13 @@ def test_tui_run_captures_engine_console(capsys):
 def test_tui_run_progress_bar_tracks_engine():
     from textual.widgets import ProgressBar
 
-    def progress_scan(targets, **kwargs):
+    def progress_run(kind, targets, kwargs):
         kwargs["on_progress"]("matching", 0, 4)
         kwargs["on_progress"]("matching", 2, 4)
         kwargs["on_progress"]("matching", 4, 4)
         return 0
 
-    app = make_app(execute_scan=progress_scan)
+    app = make_app(run=progress_run)
 
     async def scenario():
         async with app.run_test() as pilot:
@@ -177,11 +172,11 @@ def test_tui_run_progress_bar_determinate_during_run():
 
     from textual.widgets import ProgressBar
 
-    def slow_scan(targets, **kwargs):
+    def slow_run(kind, targets, kwargs):
         time.sleep(0.3)
         return 0
 
-    app = make_app(execute_scan=slow_scan)
+    app = make_app(run=slow_run)
 
     async def scenario():
         async with app.run_test() as pilot:

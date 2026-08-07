@@ -9,8 +9,9 @@ from typing import Callable, TextIO
 
 from rich.console import Console
 
-from blacklight import __version__, history, paths
+from blacklight import __version__, engine, history, paths
 from blacklight import theme
+from blacklight.engine import ScanParams
 
 
 @dataclass(frozen=True)
@@ -131,13 +132,11 @@ class CommandRunner:
     def __init__(
         self,
         *,
-        execute_scan: Callable[..., int],
-        execute_web: Callable[..., int],
-        confirm: Callable[[str], bool],
+        run: Callable[..., int],
+        confirm: Callable[[str], bool] | None = None,
     ) -> None:
-        self.execute_scan = execute_scan
-        self.execute_web = execute_web
-        self.confirm = confirm
+        self.run = run
+        self.confirm = confirm or (lambda m: False)
         self.state = ConsoleState(modules={"scan": SCAN_MODULE, "web": WEB_MODULE})
 
     # -- dispatch -------------------------------------------------------
@@ -252,14 +251,12 @@ class CommandRunner:
             return
         module = self.state.active_module()
         assert module is not None
+        if module.name == "web" and len(targets) > 1:
+            console.print("[yellow]web accepts a single TARGET; "
+                          "scanning the first only[/]")
+            targets = targets[:1]
         kwargs["confirm"] = self.confirm
-        if module.name == "scan":
-            code = self.execute_scan(targets, **kwargs)
-        else:
-            if len(targets) > 1:
-                console.print("[yellow]web accepts a single TARGET; "
-                              "scanning the first only[/]")
-            code = self.execute_web(targets[0], **kwargs)
+        code = self.run(module.name, targets, kwargs)
         console.print("[green]Done.[/]" if code == 0
                       else "[red]Done with errors.[/]")
 
@@ -306,15 +303,25 @@ class ConsoleApp:
     def __init__(
         self,
         *,
-        execute_scan: Callable[..., int],
-        execute_web: Callable[..., int],
         confirm: Callable[[str], bool] | None = None,
     ) -> None:
         self._confirm = confirm or self._confirm_plain
-        self.runner = CommandRunner(
-            execute_scan=execute_scan,
-            execute_web=execute_web,
-            confirm=self._confirm,
+        self.runner = CommandRunner(run=self._engine_run, confirm=self._confirm)
+
+    def _engine_run(self, kind: str, targets: list[str], kwargs: dict) -> int:
+        executor = engine.NetworkScan() if kind == "scan" else engine.WebScan()
+        params = ScanParams(
+            permission_granted=kwargs.get("permission_granted", False),
+            timeout=kwargs.get("timeout", 30),
+            no_cache=kwargs.get("no_cache", False),
+            ports=kwargs.get("ports"),
+            output=kwargs.get("output"),
+            fmt=kwargs.get("fmt", "html"),
+        )
+        return engine.run(
+            executor, targets, params,
+            confirm=kwargs.get("confirm"),
+            on_progress=kwargs.get("on_progress"),
         )
 
     def run(self) -> int:
@@ -346,10 +353,7 @@ class ConsoleApp:
         try:
             from blacklight.tui import app as tui_app
 
-            tui_app.BlacklightApp(
-                execute_scan=self.runner.execute_scan,
-                execute_web=self.runner.execute_web,
-            ).run()
+            tui_app.BlacklightApp(run=self._engine_run).run()
         except Exception:
             theme.make_console(stderr=True).print(
                 "[yellow]console: interactive mode unavailable; "

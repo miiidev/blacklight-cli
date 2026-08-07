@@ -2,7 +2,6 @@
 
 import sqlite3
 import sys
-from collections.abc import Callable
 from pathlib import Path
 
 import typer
@@ -64,30 +63,13 @@ def scan(
     timeout: int = typer.Option(30, "--timeout", help="Per-host nmap scan timeout in seconds."),
 ) -> None:
     """Scan targets for vulnerable services and report findings."""
-    raise typer.Exit(code=execute_scan(
-        list(target),
-        ports=ports,
-        timeout=timeout,
-        no_cache=no_cache,
-        output=output,
-        fmt=fmt,
-        permission_granted=i_have_permission,
-        confirm=lambda message: typer.confirm(message),
-    ))
-
-
-def execute_scan(
-    targets: list[str], *,
-    ports: str, timeout: int, no_cache: bool,
-    output: Path | None, fmt: str,
-    permission_granted: bool, confirm: Callable[[str], bool],
-    on_progress: Callable[[str, int | None, int | None], None] | None = None,
-) -> int:
-    """Run a network scan through the engine; returns process exit code."""
-    params = ScanParams(permission_granted=permission_granted, timeout=timeout,
+    params = ScanParams(permission_granted=i_have_permission, timeout=timeout,
                         no_cache=no_cache, ports=ports, output=output, fmt=fmt)
-    return engine.run(engine.NetworkScan(), targets, params,
-                      confirm=confirm, on_progress=on_progress, console=console)
+    raise typer.Exit(code=engine.run(
+        engine.NetworkScan(), list(target), params,
+        confirm=lambda message: typer.confirm(message),
+        console=console,
+    ))
 
 
 @app.command()
@@ -103,28 +85,13 @@ def web(
     timeout: int = typer.Option(30, "--timeout", help="HTTP request timeout in seconds."),
 ) -> None:
     """Scan a web application for misconfigurations and injection flaws."""
-    raise typer.Exit(code=execute_web(
-        url,
-        timeout=timeout,
-        no_cache=no_cache,
-        output=output,
-        fmt=fmt,
-        permission_granted=i_have_permission,
-        confirm=lambda message: typer.confirm(message),
-    ))
-
-
-def execute_web(
-    url: str, *,
-    timeout: int, no_cache: bool,
-    output: Path | None, fmt: str,
-    permission_granted: bool, confirm: Callable[[str], bool],
-) -> int:
-    """Run a web scan through the engine; returns process exit code."""
-    params = ScanParams(permission_granted=permission_granted, timeout=timeout,
+    params = ScanParams(permission_granted=i_have_permission, timeout=timeout,
                         no_cache=no_cache, output=output, fmt=fmt)
-    return engine.run(engine.WebScan(), [url], params,
-                      confirm=confirm, console=console)
+    raise typer.Exit(code=engine.run(
+        engine.WebScan(), [url], params,
+        confirm=lambda message: typer.confirm(message),
+        console=console,
+    ))
 
 
 @app.command("console")
@@ -132,7 +99,7 @@ def _console_command() -> None:
     """Start an interactive scan console (same as running 'blacklight' bare)."""
     from blacklight.console import ConsoleApp
 
-    ConsoleApp(execute_scan=execute_scan, execute_web=execute_web).run()
+    ConsoleApp().run()
 
 
 @app.command()

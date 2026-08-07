@@ -5,8 +5,7 @@ from blacklight.console import CommandRunner, ConsoleApp
 
 def make_runner(**overrides):
     kwargs = {
-        "execute_scan": lambda *a, **k: 0,
-        "execute_web": lambda *a, **k: 0,
+        "run": lambda kind, targets, kwargs: 0,
         "confirm": lambda m: True,
     }
     kwargs.update(overrides)
@@ -101,10 +100,11 @@ def test_run_requires_target():
     assert "TARGET not set" in out
 
 
-def test_run_invokes_execute_scan_with_converted_options():
+def test_run_invokes_run_scan_with_converted_options():
     captured = {}
 
-    def fake_scan(targets, **kwargs):
+    def fake_run(kind, targets, kwargs):
+        captured["kind"] = kind
         captured["targets"] = targets
         captured.update(kwargs)
         return 0
@@ -112,8 +112,9 @@ def test_run_invokes_execute_scan_with_converted_options():
     runner, out = run_commands(
         ["use scan", "set TARGET 192.168.1.10,192.168.1.20",
          "set PERMISSION true", "run"],
-        make_runner(execute_scan=fake_scan),
+        make_runner(run=fake_run),
     )
+    assert captured["kind"] == "scan"
     assert captured["targets"] == ["192.168.1.10", "192.168.1.20"]
     assert captured["permission_granted"] is True
     assert captured["ports"] == "1-1024"
@@ -124,19 +125,21 @@ def test_run_invokes_execute_scan_with_converted_options():
     assert "Done" in out
 
 
-def test_run_invokes_execute_web_with_first_target():
+def test_run_invokes_web_with_first_target():
     captured = {}
 
-    def fake_web(url, **kwargs):
-        captured["url"] = url
+    def fake_run(kind, targets, kwargs):
+        captured["kind"] = kind
+        captured["targets"] = targets
         captured.update(kwargs)
         return 0
 
     runner, _ = run_commands(
         ["use web", "set TARGET http://127.0.0.1", "run"],
-        make_runner(execute_web=fake_web),
+        make_runner(run=fake_run),
     )
-    assert captured["url"] == "http://127.0.0.1"
+    assert captured["kind"] == "web"
+    assert captured["targets"] == ["http://127.0.0.1"]
     assert captured["permission_granted"] is False
 
 
@@ -144,13 +147,13 @@ def test_run_forwards_injected_confirm():
     confirm_cb = lambda m: False  # noqa: E731
     captured = {}
 
-    def fake_scan(targets, **kwargs):
+    def fake_run(kind, targets, kwargs):
         captured.update(kwargs)
         return 0
 
     run_commands(
         ["use scan", "set TARGET 8.8.8.8", "set PERMISSION true", "run"],
-        make_runner(execute_scan=fake_scan, confirm=confirm_cb),
+        make_runner(run=fake_run, confirm=confirm_cb),
     )
     assert captured["confirm"] is confirm_cb
 
@@ -187,28 +190,28 @@ def test_empty_and_blank_lines_are_noops():
 def test_web_run_warns_when_multiple_targets():
     captured = {}
 
-    def fake_web(url, **kwargs):
-        captured["url"] = url
+    def fake_run(kind, targets, kwargs):
+        captured["targets"] = targets
         return 0
 
     runner, out = run_commands(
         ["use web", "set TARGET http://127.0.0.1,http://alias.example", "run"],
-        make_runner(execute_web=fake_web),
+        make_runner(run=fake_run),
     )
-    assert captured["url"] == "http://127.0.0.1"
+    assert captured["targets"] == ["http://127.0.0.1"]
     assert "web accepts a single TARGET" in out
 
 
 def test_run_rejects_non_positive_timeout():
     called = []
 
-    def fake_scan(targets, **kwargs):
+    def fake_run(kind, targets, kwargs):
         called.append(targets)
         return 0
 
     _, out = run_commands(
         ["use scan", "set TIMEOUT 0", "run"],
-        make_runner(execute_scan=fake_scan),
+        make_runner(run=fake_run),
     )
     assert "TIMEOUT must be a positive integer" in out
     assert called == []
@@ -227,11 +230,11 @@ runner = CliRunner()
 def test_console_command_piped_session(monkeypatch):
     seen = []
 
-    def fake_scan(targets, **kwargs):
-        seen.append((targets, kwargs))
+    def fake_run(executor, targets, params, **kwargs):
+        seen.append((executor, targets, params))
         return 0
 
-    monkeypatch.setattr("blacklight.cli.execute_scan", fake_scan)
+    monkeypatch.setattr("blacklight.engine.run", fake_run)
     result = runner.invoke(
         app, ["console"],
         input="use scan\nset TARGET 192.168.1.10\nrun\nexit\n",
@@ -241,13 +244,13 @@ def test_console_command_piped_session(monkeypatch):
     assert "Type 'help'" in result.output
     assert "Using module scan" in result.output
     assert len(seen) == 1
-    targets, kwargs = seen[0]
+    executor, targets, params = seen[0]
+    assert executor.kind == "scan"
     assert targets == ["192.168.1.10"]
-    assert kwargs["permission_granted"] is False
+    assert params.permission_granted is False
 
 
-def test_bare_invocation_shows_help(monkeypatch):
-    monkeypatch.setattr("blacklight.cli.execute_scan", lambda *a, **k: 0)
+def test_bare_invocation_shows_help():
     result = runner.invoke(app, [])
     assert result.exit_code == 0
     assert "██████╗" in result.output
@@ -347,9 +350,10 @@ def test_run_interactive_lets_tui_bridge_own_confirm(monkeypatch):
             pass
 
     monkeypatch.setattr("blacklight.tui.app.BlacklightApp", SpyApp)
-    app = ConsoleApp(execute_scan=lambda *a, **k: 0, execute_web=lambda *a, **k: 0)
+    app = ConsoleApp()
     app._run_interactive()
     assert "confirm" not in captured
+    assert callable(captured["run"])
 
 
 def test_run_interactive_falls_back_on_tui_failure(monkeypatch, capsys):
@@ -361,7 +365,7 @@ def test_run_interactive_falls_back_on_tui_failure(monkeypatch, capsys):
             raise RuntimeError("terminal broken")
 
     monkeypatch.setattr("blacklight.tui.app.BlacklightApp", BoomApp)
-    app = ConsoleApp(execute_scan=lambda *a, **k: 0, execute_web=lambda *a, **k: 0)
+    app = ConsoleApp()
     app._run_interactive()
     out = capsys.readouterr().err
     assert "interactive mode unavailable" in out

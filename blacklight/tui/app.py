@@ -43,21 +43,18 @@ class BlacklightApp(App):
     def __init__(
         self,
         *,
-        execute_scan: Callable[..., int],
-        execute_web: Callable[..., int],
+        run: Callable[..., int],
         confirm: Callable[[str], bool] | None = None,
     ) -> None:
         super().__init__()
-        self._execute_scan = execute_scan
-        self._execute_web = execute_web
+        self._run = run
         self._confirm = confirm
         self._bridge = ConfirmBridge(self)
         self.runner: CommandRunner = None  # type: ignore[assignment]
 
     def on_mount(self) -> None:
         self.runner = CommandRunner(
-            execute_scan=self._execute_scan,
-            execute_web=self._execute_web,
+            run=self._run,
             confirm=self._confirm or self._bridge.ask,
         )
         self.push_screen(MainScreen())
