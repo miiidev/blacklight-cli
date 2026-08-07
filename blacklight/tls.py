@@ -96,8 +96,80 @@ def _cert_findings(host, port, service, cert_output, now) -> list["TlsFinding"]:
     return findings
 
 
+_HEADER_RE = re.compile(r"(SSLv3|TLSv1\.\d):")
+_CIPHER_RE = re.compile(r"\b(?:TLS|SSL|ADH|AECDH)_[A-Z0-9_]+")
+
+
+def _cipher_sections(output: str) -> dict[str, set[str]]:
+    text = output or ""
+    matches = [
+        (m.start(), "h", m.group(1)) for m in _HEADER_RE.finditer(text)
+    ] + [
+        (m.start(), "c", m.group(0)) for m in _CIPHER_RE.finditer(text)
+    ]
+    sections: dict[str, set[str]] = {}
+    current: str | None = None
+    for _, kind, value in sorted(matches):
+        if kind == "h":
+            current = value
+            sections.setdefault(current, set())
+        elif current is not None:
+            sections[current].add(value)
+    return sections
+
+
+def _protocol_findings(host, port, service, ciphers_output) -> list[TlsFinding]:
+    sections = _cipher_sections(ciphers_output)
+    if not sections:
+        return []
+    findings: list[TlsFinding] = []
+    legacy = [
+        ("SSLv3", "TLS-PROTO-SSLV3", "high"),
+        ("TLSv1.0", "TLS-PROTO-TLSV1.0", "medium"),
+        ("TLSv1.1", "TLS-PROTO-TLSV1.1", "low"),
+    ]
+    for name, cve_id, severity in legacy:
+        if name in sections:
+            findings.append(TlsFinding(
+                host, port, service, "protocol",
+                f"supports {name}", name, severity, cve_id))
+    if not {"TLSv1.2", "TLSv1.3"} & set(sections):
+        findings.append(TlsFinding(
+            host, port, service, "protocol",
+            "Does not offer TLS 1.2 or TLS 1.3",
+            ", ".join(sorted(sections)), "high", "TLS-PROTO-NO-MODERN"))
+    return findings
+
+
+def _cipher_findings(host, port, service, ciphers_output) -> list[TlsFinding]:
+    ciphers: set[str] = set()
+    for section in _cipher_sections(ciphers_output).values():
+        ciphers |= section
+    if not ciphers:
+        return []
+    findings: list[TlsFinding] = []
+    anon = [c for c in ciphers if "NULL" in c or "EXPORT" in c
+            or c.startswith(("ADH_", "AECDH_")) or "_ANON_" in c]
+    weak = [c for c in ciphers if "RC4" in c or ("_DES_" in c and "3DES" not in c)]
+    if anon:
+        findings.append(TlsFinding(
+            host, port, service, "weak-cipher",
+            "Supports NULL/EXPORT/anonymous ciphers",
+            ", ".join(sorted(anon)[:5]), "high", "TLS-CIPHER-ANON"))
+    if weak:
+        findings.append(TlsFinding(
+            host, port, service, "weak-cipher",
+            "Supports RC4 or single-DES ciphers",
+            ", ".join(sorted(weak)), "medium", "TLS-CIPHER-WEAK"))
+    return findings
+
+
 def classify(host: str, port: int, service: str, tls: TlsData,
              now: datetime | None = None) -> list[TlsFinding]:
-    """Produce TLS findings for one host:port from raw nmap script output."""
+    """Produce all TLS findings for one host:port from nmap script output."""
     now = now or datetime.now(timezone.utc)
-    return _cert_findings(host, port, service, tls.ssl_cert_output, now)
+    findings: list[TlsFinding] = []
+    findings.extend(_cert_findings(host, port, service, tls.ssl_cert_output, now))
+    findings.extend(_protocol_findings(host, port, service, tls.ssl_ciphers_output))
+    findings.extend(_cipher_findings(host, port, service, tls.ssl_ciphers_output))
+    return findings

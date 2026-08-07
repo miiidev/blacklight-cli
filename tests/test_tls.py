@@ -76,3 +76,50 @@ def test_space_joined_self_signed_still_detected():
     space = " ".join(newline.split("\n"))
     assert _classify(cert=space) == _classify(cert=newline)
     assert [f.cve_id for f in _classify(cert=space)] == ["TLS-SELF-SIGNED"]
+
+
+CIPHER_OUTPUT_LEGACY = """SSLv3:
+  cipher suites:
+    TLS_RSA_WITH_NULL_SHA (rsa 2048) - C
+TLSv1.0:
+  cipher suites:
+    TLS_ECDHE_RSA_WITH_3DES_EDE_CBC_SHA (secp256r1) - C
+TLSv1.1:
+  cipher suites:
+    TLS_RSA_WITH_RC4_128_SHA (rsa 2048) - C
+"""
+
+
+def test_legacy_protocols_and_weak_ciphers():
+    findings = _classify(ciphers=CIPHER_OUTPUT_LEGACY)
+    ids = {f.cve_id for f in findings}
+    assert {"TLS-PROTO-SSLV3", "TLS-PROTO-TLSV1.0", "TLS-PROTO-TLSV1.1",
+            "TLS-PROTO-NO-MODERN", "TLS-CIPHER-ANON", "TLS-CIPHER-WEAK"} <= ids
+    by_id = {f.cve_id: f.severity for f in findings}
+    assert by_id["TLS-PROTO-SSLV3"] == "high"
+    assert by_id["TLS-PROTO-TLSV1.0"] == "medium"
+
+
+def test_modern_only_no_protocol_findings():
+    modern = """TLSv1.2:
+  cipher suites:
+    TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256 (secp256r1) - A
+"""
+    assert _classify(ciphers=modern) == []
+
+
+def test_anon_cipher_and_no_modern_tls():
+    output = """TLSv1.0:
+  cipher suites:
+    ADH_AES_128_GCM_SHA256 (rsa 2048) - C
+"""
+    findings = _classify(ciphers=output)
+    ids = {f.cve_id for f in findings}
+    assert "TLS-PROTO-NO-MODERN" in ids
+    assert "TLS-CIPHER-ANON" in ids
+
+
+def test_space_joined_cipher_output_matches_newline_joined():
+    space = " ".join(CIPHER_OUTPUT_LEGACY.split("\n"))
+    assert sorted(f.cve_id for f in _classify(ciphers=space)) == \
+        sorted(f.cve_id for f in _classify(ciphers=CIPHER_OUTPUT_LEGACY))
