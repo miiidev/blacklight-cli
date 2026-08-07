@@ -192,3 +192,22 @@ def test_export_json_includes_tls(tmp_path):
     out = export_report(_tls_result(), "json", tmp_path / "tls.json")
     data = json.loads(out.read_text(encoding="utf-8"))
     assert data["tls"][0]["cve_id"] == "TLS-EXPIRED"
+
+
+def test_export_html_includes_tls_section(tmp_path):
+    out = export_report(_tls_result(), "html", tmp_path / "tls.html")
+    html = out.read_text(encoding="utf-8")
+    assert "TLS findings" in html
+    assert "TLS-EXPIRED" in html
+
+
+def test_export_markdown_includes_tls_section(tmp_path):
+    out = export_report(_tls_result(), "markdown", tmp_path / "tls.md")
+    md = out.read_text(encoding="utf-8")
+    assert "## TLS findings" in md
+    assert "TLS-EXPIRED" in md
+
+
+def test_export_html_without_tls_omits_section(tmp_path):
+    out = export_report(_result([_finding()]), "html", tmp_path / "plain.html")
+    assert "TLS findings" not in out.read_text(encoding="utf-8")

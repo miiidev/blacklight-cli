@@ -46,6 +46,19 @@ footer{margin-top:2rem;font-size:.8rem;color:#666}
 <p>No findings.</p>
 {% endif %}
 
+{% if tls %}
+<h2>TLS findings</h2>
+<table>
+<tr><th>Host</th><th>Port</th><th>Service</th><th>Category</th><th>Severity</th><th>Detail</th><th>Evidence</th></tr>
+{% for f in tls %}
+<tr class="{{ f.severity }}">
+<td>{{ f.host }}</td><td>{{ f.port }}</td><td>{{ f.service }}</td><td>{{ f.category }}</td>
+<td>{{ f.severity }}</td><td>{% if f.cve_id %}{{ f.cve_id }}: {% endif %}{{ f.detail }}</td><td>{{ f.evidence }}</td>
+</tr>
+{% endfor %}
+</table>
+{% endif %}
+
 {% if web %}
 <h2>Web findings</h2>
 <p>URL: <strong>{{ web.meta.url }}</strong> &middot; Checks run: {{ web.meta.checks_run }}

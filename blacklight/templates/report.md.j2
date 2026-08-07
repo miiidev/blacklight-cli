@@ -18,6 +18,14 @@
 |------|------|---------|---------|-----|------|----------|------|-----|-------------|
 {% for f in findings %}| {{ f.host }} | {{ f.port }} | {{ f.service }} | {{ f.version }} | [{{ f.cve_id }}](https://nvd.nist.gov/vuln/detail/{{ f.cve_id }}) | {{ f.cvss_score }} | {{ f.severity }} | {{ f.epss }} | {% if f.in_kev %}YES{% endif %} | {{ f.description }}{% if f.fixed_version %} (fixed in {{ f.fixed_version }}){% endif %} |
 {% endfor %}
+{% if tls %}
+## TLS findings
+
+| Host | Port | Service | Category | Severity | Detail | Evidence |
+|------|------|---------|----------|----------|--------|----------|
+{% for f in tls %}| {{ f.host }} | {{ f.port }} | {{ f.service }} | {{ f.category }} | {{ f.severity }} | {% if f.cve_id %}{{ f.cve_id }}: {% endif %}{{ f.detail }} | {{ f.evidence }} |
+{% endfor %}
+{% endif %}
 {% if web %}
 ## Web findings
 
