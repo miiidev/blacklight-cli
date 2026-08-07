@@ -151,3 +151,47 @@ def test_build_findings_returns_findings(tmp_path, nvd_payload, monkeypatch):
     assert findings[0].port == 22
     assert findings[0].cve_id == "CVE-2024-12345"
     assert findings[0].cpe == "cpe:2.3:a:openbsd:openssh:9.6:*:*:*:*:*:*:*"
+
+
+def test_build_findings_prefers_nmap_cpe(monkeypatch):
+    captured = {}
+
+    class RecordingClient:
+        def lookup(self, cpe):
+            captured["cpe"] = cpe
+            return []
+
+    record = ScanRecord(host="192.168.1.10", port=443, protocol="tcp",
+                        service="nginx", version="1.24.0",
+                        cpe="cpe:/a:nginx:nginx:1.24.0")
+    assert build_findings([record], RecordingClient()) == []
+    assert captured["cpe"] == "cpe:2.3:a:nginx:nginx:1.24.0:*:*:*:*:*:*:*"
+
+
+def test_build_findings_fills_versionless_nmap_cpe(monkeypatch):
+    captured = {}
+
+    class RecordingClient:
+        def lookup(self, cpe):
+            captured["cpe"] = cpe
+            return []
+
+    record = ScanRecord(host="192.168.1.11", port=8080, protocol="tcp",
+                        service="Apache httpd", version="2.4.58",
+                        cpe="cpe:/a:apache:http_server")
+    assert build_findings([record], RecordingClient()) == []
+    assert captured["cpe"] == "cpe:2.3:a:apache:http_server:2.4.58:*:*:*:*:*:*:*"
+
+
+def test_build_findings_falls_back_to_dict_without_nmap_cpe(monkeypatch):
+    captured = {}
+
+    class RecordingClient:
+        def lookup(self, cpe):
+            captured["cpe"] = cpe
+            return []
+
+    record = ScanRecord(host="192.168.1.10", port=22, protocol="tcp",
+                        service="OpenSSH", version="9.6p1")
+    assert build_findings([record], RecordingClient()) == []
+    assert captured["cpe"] == "cpe:2.3:a:openbsd:openssh:9.6:*:*:*:*:*:*:*"

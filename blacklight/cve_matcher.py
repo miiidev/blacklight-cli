@@ -9,7 +9,12 @@ from pathlib import Path
 import requests
 
 from blacklight import paths
-from blacklight.cpe_map import cpe_to_match_string, extract_version, service_to_cpe
+from blacklight.cpe_map import (
+    cpe_to_match_string,
+    extract_version,
+    normalize_cpe,
+    service_to_cpe,
+)
 from blacklight.scanner import ScanRecord
 
 NVD_API_URL = "https://services.nvd.nist.gov/rest/json/cves/2.0"
@@ -198,7 +203,10 @@ def build_findings(records: list[ScanRecord], client: NvdClient) -> list[Finding
     findings: list[Finding] = []
     for record in records:
         version = extract_version(record.version)
-        cpe = service_to_cpe(record.service, version)
+        cpe = (
+            record.cpe and normalize_cpe(record.cpe, record.version)
+            or service_to_cpe(record.service, version)
+        )
         if cpe is None:
             continue
         for cve in client.lookup(cpe):
