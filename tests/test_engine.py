@@ -103,3 +103,116 @@ def test_web_scan_cve_findings_from_fingerprint(monkeypatch):
     assert len(cve_findings) == 1
     assert cve_findings[0].cve_id == "CVE-2021-41773"
     assert result.meta.cve_findings == 1
+
+
+def _params(**extra):
+    from blacklight.engine import ScanParams
+
+    defaults = dict(permission_granted=False, timeout=30, no_cache=False,
+                    ports=None, output=None, fmt="html")
+    defaults.update(extra)
+    return ScanParams(**defaults)
+
+
+def never_confirm(message):
+    raise AssertionError("confirm must not be called")
+
+
+def _monkey_engine(monkeypatch, tmp_path, records=None, client=None):
+    monkeypatch.setattr("blacklight.engine.scanner.scan_hosts",
+                        lambda *a, **k: records or [])
+    monkeypatch.setattr("blacklight.engine.scanner.find_nmap", lambda: "nmap")
+    monkeypatch.setattr("blacklight.engine.os", SimpleNamespace(environ={}))
+    monkeypatch.setattr("blacklight.engine.paths.CACHE_DIR", tmp_path)
+    monkeypatch.setattr("blacklight.engine.paths.SCAN_LOG", tmp_path / "scan.log")
+    monkeypatch.setattr("blacklight.engine.paths.HISTORY_DB", tmp_path / "history.db")
+    monkeypatch.setattr("blacklight.engine.NvdClient", client or _FakeClient)
+    monkeypatch.setattr("blacklight.engine.enrichment.enrich_findings",
+                        lambda findings, **k: findings)
+
+
+def test_run_blocks_public_target_without_permission(monkeypatch, tmp_path, capsys):
+    from blacklight.engine import NetworkScan, run
+
+    def boom(*a, **k):
+        raise AssertionError("nmap must not run for blocked targets")
+
+    monkeypatch.setattr("blacklight.engine.scanner.scan_hosts", boom)
+    code = run(NetworkScan(), ["8.8.8.8"],
+               _params(permission_granted=False), confirm=never_confirm)
+    assert code == 1
+    assert "Blocked" in capsys.readouterr().out
+
+
+def test_run_aborts_when_confirm_declines(monkeypatch, capsys):
+    from blacklight.engine import NetworkScan, run
+
+    def boom(*a, **k):
+        raise AssertionError("nmap must not run after declining")
+
+    monkeypatch.setattr("blacklight.engine.scanner.scan_hosts", boom)
+    calls = []
+
+    def declining(message):
+        calls.append(message)
+        return False
+
+    code = run(NetworkScan(), ["8.8.8.8"],
+               _params(permission_granted=True), confirm=declining)
+    assert code == 1
+    assert calls
+    assert "Aborted" in capsys.readouterr().out
+
+
+def test_run_private_target_skips_confirm_and_records_history(monkeypatch, tmp_path):
+    from blacklight import history
+    from blacklight.engine import NetworkScan, run
+
+    _monkey_engine(monkeypatch, tmp_path, records=_network_records())
+    code = run(NetworkScan(), ["192.168.1.10"],
+               _params(ports="22"), confirm=never_confirm)
+    assert code == 0
+    rows = history.list_recent()
+    assert len(rows) == 1
+    assert rows[0].kind == "scan"
+    assert rows[0].target == "192.168.1.10"
+    assert rows[0].hosts == 1
+
+
+def test_run_exports_json(monkeypatch, tmp_path, capsys):
+    from blacklight.engine import NetworkScan, run
+
+    _monkey_engine(monkeypatch, tmp_path, records=_network_records())
+    out = tmp_path / "report.json"
+    code = run(NetworkScan(), ["192.168.1.10"],
+               _params(output=out, fmt="json"), confirm=never_confirm)
+    assert code == 0
+    assert out.exists()
+    assert "Report written to" in capsys.readouterr().out
+
+
+def test_run_returns_1_on_upstream_error(monkeypatch, tmp_path, capsys):
+    import requests
+
+    from blacklight.engine import NetworkScan, run
+
+    def boom(*a, **k):
+        raise requests.ConnectionError("unable to reach nvd.nist.gov")
+
+    monkeypatch.setattr("blacklight.engine.scanner.scan_hosts", boom)
+    monkeypatch.setattr("blacklight.engine.scanner.find_nmap", lambda: "nmap")
+    monkeypatch.setattr("blacklight.engine.paths.SCAN_LOG", tmp_path / "scan.log")
+    monkeypatch.setattr("blacklight.engine.paths.HISTORY_DB", tmp_path / "history.db")
+    code = run(NetworkScan(), ["192.168.1.10"], _params(), confirm=never_confirm)
+    assert code == 1
+    assert "Scan failed" in capsys.readouterr().out
+    assert not (tmp_path / "scan.log").exists()
+
+
+def test_run_reports_missing_nmap(monkeypatch, capsys):
+    from blacklight.engine import NetworkScan, run
+
+    monkeypatch.setattr("blacklight.engine.scanner.find_nmap", lambda: None)
+    code = run(NetworkScan(), ["192.168.1.10"], _params(), confirm=never_confirm)
+    assert code == 1
+    assert "nmap not found" in capsys.readouterr().out

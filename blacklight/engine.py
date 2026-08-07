@@ -7,15 +7,20 @@ each exposing verify() (guardrails verdict) and run() (a typed ScanResult).
 """
 
 import os
+import sqlite3
+import subprocess
 import urllib.parse
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable
 
+import requests
+from rich.console import Console
 from rich.progress import BarColumn, Progress, SpinnerColumn, TextColumn
 
-from blacklight import enrichment, guardrails, paths, scanner, theme
+from blacklight import enrichment, guardrails, history, paths, scanner, theme
+from blacklight.reporter import export_report, render_terminal
 from blacklight.cpe_map import service_to_cpe
 from blacklight.cve_matcher import Finding, NvdClient, build_findings
 from blacklight.guardrails import Verdict
@@ -232,3 +237,128 @@ class WebScan(ScanExecutor):
                        cve_id=f.cve_id, epss=f.epss, in_kev=f.in_kev)
             for f in matched
         ]
+
+
+console = theme.make_console()
+
+
+def set_console(c: Console) -> None:
+    """Point the engine's shared console (TUI capture / --color swap it)."""
+    global console
+    console = c
+
+
+def _log_result(kind: str, result: ScanResult, permission: bool) -> None:
+    """Append one scan.log line per run; the format differs by kind."""
+    meta = result.meta
+    if kind == "scan":
+        line = (
+            f"{result.generated} target={result.target} permission={permission} "
+            f"hosts={meta.hosts_scanned} services={meta.services_found} "
+            f"findings={meta.findings_count}\n"
+        )
+    else:
+        line = (
+            f"{meta.generated} url={result.target} permission={permission} "
+            f"checks={meta.checks_run} errors={meta.checks_errored} "
+            f"findings={meta.cve_findings}\n"
+        )
+    with paths.SCAN_LOG.open("a", encoding="utf-8") as fh:
+        fh.write(line)
+
+
+def _legacy_meta(result: ScanResult) -> dict:
+    """Project a typed meta back to the old dict for record/report calls.
+
+    Temporary: removed when record_scan/reporter consume ScanResult
+    (Tasks 3 and 4).
+    """
+    if result.kind == "scan":
+        m = result.meta
+        return {"targets": m.targets, "hosts_scanned": m.hosts_scanned,
+                "services_found": m.services_found, "findings_count": m.findings_count,
+                "generated": m.generated}
+    m = result.meta
+    return {"url": m.url, "host": m.host, "resolved_ip": m.resolved_ip,
+            "checks_run": m.checks_run, "checks_errored": m.checks_errored,
+            "cve_findings": m.cve_findings, "generated": m.generated}
+
+
+def run(
+    executor: ScanExecutor,
+    targets: list[str],
+    params: ScanParams,
+    *,
+    confirm: Callable[[str], bool],
+    on_progress: Callable[[str, int | None, int | None], None] | None = None,
+    console: Console | None = None,
+) -> int:
+    """Run one scan end-to-end and return the process exit code (0 or 1)."""
+    console = console or globals()["console"]
+    paths.ensure_dirs()
+    verdict = executor.verify(targets, params.permission_granted)
+    for blocked in verdict.blocked:
+        if executor.kind == "web":
+            console.print(f"[red]Blocked:[/] {blocked} must be an http(s) URL for a private "
+                          "host, or pass --i-have-permission for public hosts.")
+        else:
+            console.print(f"[red]Blocked:[/] {blocked} is not a private address. "
+                          "Pass --i-have-permission to allow scanning non-private targets.")
+    if verdict.needs_confirmation:
+        if executor.kind == "web":
+            prompt = (f"Target {verdict.needs_confirmation[0]} is public. "
+                      "Are you authorized to scan it?")
+        else:
+            names = ", ".join(verdict.needs_confirmation)
+            prompt = f"Target(s) {names} are public. Are you authorized to scan them?"
+        if not confirm(prompt):
+            console.print("[yellow]Aborted.[/]")
+            return 1
+    scannable = verdict.allowed + verdict.needs_confirmation
+    if not scannable:
+        console.print("[red]No scannable targets.[/]")
+        return 1
+    if executor.kind == "scan" and scanner.find_nmap() is None:
+        console.print("[red]nmap not found.[/] Install it with one of:\n"
+                      "  apt:   sudo apt install nmap\n"
+                      "  brew:  brew install nmap\n"
+                      "  choco: choco install nmap")
+        return 1
+    if params.fmt not in ("html", "markdown", "json"):
+        console.print("[red]Invalid format.[/] Choose html, markdown, or json.")
+        return 1
+    if params.output is not None and params.fmt == "html" \
+            and params.output.suffix in (".md", ".json"):
+        params.fmt = "markdown" if params.output.suffix == ".md" else "json"
+
+    try:
+        result = executor.run(scannable, params, on_progress)
+    except (requests.RequestException, subprocess.TimeoutExpired, OSError,
+            RuntimeError, ValueError) as exc:
+        label = "Web scan" if executor.kind == "web" else "Scan"
+        console.print(f"[red]{label} failed:[/] {exc}")
+        return 1
+    _log_result(executor.kind, result, params.permission_granted)
+    try:
+        history.record_scan(executor.kind, result.target, params.permission_granted,
+                            _legacy_meta(result),
+                            result.findings or result.web_findings)
+    except (OSError, sqlite3.Error) as exc:
+        console.print(f"[yellow]Could not record scan history:[/] {exc}")
+    if result.kind == "web":
+        render_terminal(result.findings, _legacy_meta(result),
+                        web_findings=result.web_findings,
+                        web_meta=_legacy_meta(result), console=console)
+    else:
+        render_terminal(result.findings, _legacy_meta(result), console=console)
+    if params.output is not None:
+        try:
+            export_report(result.findings, _legacy_meta(result), params.fmt,
+                          params.output,
+                          web_findings=result.web_findings or None,
+                          web_meta=_legacy_meta(result) if result.kind == "web" else None)
+        except (OSError, ValueError) as exc:
+            console.print(f"[red]Report export failed:[/] {exc}")
+            return 1
+        console.print(f"Report written to [bold]{params.output}[/]")
+    return 0
