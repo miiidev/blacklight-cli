@@ -4,6 +4,7 @@ from blacklight.cpe_map import (
     SERVICE_CPE,
     cpe_to_match_string,
     extract_version,
+    normalize_cpe,
     service_to_cpe,
 )
 
@@ -61,3 +62,33 @@ def test_cpe_to_match_string_unknown_version_drops_wildcards():
     assert cpe_to_match_string("cpe:2.3:a:oracle:mysql:*:*:*:*:*:*:*:*") == (
         "cpe:2.3:a:oracle:mysql"
     )
+
+
+def test_normalize_cpe_uri_binding_full_count():
+    assert normalize_cpe("cpe:/a:nginx:nginx:1.24.0") == (
+        "cpe:2.3:a:nginx:nginx:1.24.0:*:*:*:*:*:*:*"
+    )
+
+
+def test_normalize_cpe_uri_binding_fills_missing_version():
+    assert normalize_cpe("cpe:/a:nginx:nginx", version="1.24.0") == (
+        "cpe:2.3:a:nginx:nginx:1.24.0:*:*:*:*:*:*:*"
+    )
+
+
+def test_normalize_cpe_2_3_passthrough():
+    assert normalize_cpe("cpe:2.3:a:apache:http_server:2.4.58:*:*:*:*:*:*:*") == (
+        "cpe:2.3:a:apache:http_server:2.4.58:*:*:*:*:*:*:*"
+    )
+
+
+def test_normalize_cpe_keeps_wildcard_version_without_version_arg():
+    assert normalize_cpe("cpe:/a:nginx:nginx") == (
+        "cpe:2.3:a:nginx:nginx:*:*:*:*:*:*:*:*"
+    )
+
+
+def test_normalize_cpe_rejects_non_cpe():
+    assert normalize_cpe("not-a-cpe") is None
+    assert normalize_cpe("cpe://broken") is None
+    assert normalize_cpe("cpe:/x:foo:bar") is None

@@ -98,3 +98,32 @@ def cpe_to_match_string(cpe: str) -> str:
     if len(parts) < 6 or parts[5] == "*":
         return ":".join(parts[:5])
     return ":".join(parts[:6])
+
+
+def normalize_cpe(cpe: str, version: str | None = None) -> str | None:
+    """Convert an nmap CPE string (URI or 2.3 binding) to the NVD cpe:2.3 form.
+
+    nmap emits either the legacy URI binding ("cpe:/a:apache:http_server:2.4.58")
+    or a full "cpe:2.3:" binding. Both are normalized to the 13-component
+    cpe:2.3 form padded with "*". When the CPE has no version and a raw version
+    string is passed, the first dotted numeric run is spliced in. Returns None
+    for anything that is not a CPE binding.
+    """
+    value = cpe.strip()
+    if not value.startswith("cpe:"):
+        return None
+    rest = value[4:]
+    if rest.startswith("/"):
+        parts = rest[1:].split(":")
+    elif rest.startswith("2.3:"):
+        parts = rest[4:].split(":")
+    else:
+        return None
+    if not parts or parts[0] not in ("a", "o", "h"):
+        return None
+    padded = (parts + ["*"] * 11)[:11]
+    if padded[3] == "*" and version:
+        extracted = extract_version(version)
+        if extracted:
+            padded[3] = extracted
+    return "cpe:2.3:" + ":".join(padded)
