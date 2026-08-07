@@ -54,7 +54,7 @@
 
 The task is pure: create the types and the two adapters (moving the bodies of `cli.run_scan` and `web/engine.run_web_scan` verbatim into the adapters, returning `ScanResult`). Nothing else changes; all existing tests stay green because `cli.py`/`web/engine.py` are untouched this task.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 `tests/test_engine.py`:
 
@@ -156,12 +156,12 @@ def test_web_scan_cve_findings_from_fingerprint(monkeypatch):
     assert result.meta.cve_findings == 1
 ```
 
-- [ ] **Step 2: Run the tests to see them fail**
+- [x] **Step 2: Run the tests to see them fail**
 
 Run: `python -m pytest tests/test_engine.py -q`
 Expected: FAIL with `ModuleNotFoundError: No module named 'blacklight.engine'`.
 
-- [ ] **Step 3: Create `blacklight/engine.py` — types, meta, adapter stubs**
+- [x] **Step 3: Create `blacklight/engine.py` — types, meta, adapter stubs**
 
 ```python
 """One scan pipeline: a typed ScanResult and two executor adapters.
@@ -407,12 +407,12 @@ class WebScan(ScanExecutor):
 Run: `python -m pytest tests/test_engine.py -q`
 Expected: PASS (all three tests).
 
-- [ ] **Step 4: run the full suite**
+- [x] **Step 4: run the full suite**
 
 Run: `python -m pytest -q`
 Expected: PASS — nothing consumes the new module yet.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add blacklight/engine.py tests/test_engine.py
@@ -434,7 +434,7 @@ git commit -m "feat: engine adapters produce a typed ScanResult (scan + web)"
 
 The orchestration that lives in `execute_scan`/`execute_web` (verify → blocked messages → confirm → no-target check → nmap present check → fmt validation → suffix heuristic → run → log → record → render → export) moves into `engine.run`. `cli.execute_scan`/`execute_web` shrink to one call into the orchestrator. The `record_scan` and `render_terminal`/`export_report` calls still use the OLD dict signatures this task; they only get the typed `ScanResult` in Tasks 3–4.
 
-- [ ] **Step 1: Write the failing orchestrator tests**
+- [x] **Step 1: Write the failing orchestrator tests**
 
 Append to `tests/test_engine.py`:
 
@@ -552,12 +552,12 @@ def _records():
                        service="OpenSSH", version="9.6p1")]
 ```
 
-- [ ] **Step 2: run to verify failure**
+- [x] **Step 2: run to verify failure**
 
 Run: `python -m pytest tests/test_engine.py -q`
 Expected: FAIL with `AttributeError: module 'black_light.engine' has no attribute 'run'`.
 
-- [ ] **Step 3: implement `run` and the console plumbing**
+- [x] **Step 3: implement `run` and the console plumbing**
 
 In `blacklight/engine.py`, add module state and the orchestrator:
 
@@ -695,12 +695,12 @@ def _legacy_meta(result: ScanResult) -> dict:
 
 and call `render_terminal(result.findings, _legacy_meta(result), web_findings=result.web_findings or None, web_meta=(_legacy_meta(result) if result.kind == "web" else None))`, `export_report(findings, _legacy_meta(result), fmt, output, web_findings=result.web_findings or None, web_meta=(_legacy_meta(result) if result.kind == "web" else None))`, `history.record_scan(result.kind, result.target, permission, _legacy_meta(result), result.findings or result.web_findings)`. These temporary calls are replaced in Tasks 3 and 4.
 
-- [ ] **Step 4: rerun the new engine tests**
+- [x] **Step 4: rerun the new engine tests**
 
 Run: `python -m pytest tests/test_engine.py -q`
 Expected: PASS for the orchestrator + adapter tests.
 
-- [ ] **Step 5: rewire `cli.py` to delegate (no behavior change yet)**
+- [x] **Step 5: rewire `cli.py` to delegate (no behavior change yet)**
 
 Replace the bodies of `execute_scan` and `execute_web` with one-listers, keep the same params:
 
@@ -748,12 +748,12 @@ Update `tests/test_cli.py` monkeypatch targets:
 
 Also `tests/test_cli_web.py` similarly. Keep the typer-level expectations (exit codes, "Blocked", "Web scan failed", JSON exports). The `WEB_META` dict stays since `engine` still receives a dict projection this task (Task 4 removes it).
 
-- [ ] **Step 6: full suite**
+- [x] **Step 6: full suite**
 
 Run: `python -m pytest -q`
 Expected: PASS.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add blacklight/engine.py blacklight/cli.py tests/test_engine.py tests/test_cli.py tests/test_cli_web.py
@@ -773,7 +773,7 @@ git commit -m "feat: engine.run orchestrates scan+web; cli delegates"
 - Consumes: `ScanResult` (Task 1).
 - Produces: `history.record_scan(result: ScanResult, permission: bool) -> None`.
 
-- [ ] **Step 1: write failing history tests (typed)**
+- [x] **Step 1: write failing history tests (typed)**
 
 `tests/test_history.py` — replace the dict-based `NET_META`/`WEB_META` usage in `record_scan` call sites with `ScanResult` fixtures. Add a helper module-level:
 
@@ -802,12 +802,12 @@ def _scan_result(kind="scan", target="192.168.1.10", generated="2026-08-04T10:00
 
 Then update each `record_scan("scan", target, permission, NET_META, findings)` call to `record_scan(_scan(kind="scan", target=target, generated=..., findings=...), permission)`. The existing assertions on `rows[0].kind`, `hosts`, `scanned_at`, `findings` stay identical.
 
-- [ ] **Step 2: run to see fail**
+- [x] **Step 2: run to see fail**
 
 Run: `python -m pytest tests/test_history.py -q`
 Expected: FAIL with `TypeError: record_scan() ... unexpected keyword ...` or similar.
 
-- [ ] **Step 3: update `history.py`**
+- [x] **Step 3: update `history.py`**
 
 ```python
 def record_scan(result: ScanResult, permission: bool) -> None:
@@ -862,16 +862,16 @@ Update `blacklight/engine.py`: replace `history.record_scan("scan" if ..., resul
 
 Note: `record_scan` needs the local variable `meta` defined for the second branch — restructure to one `meta = result.meta` before the branch.
 
-- [ ] **Step 4: update every other `record_scan` call site**
+- [x] **Step 4: update every other `record_scan` call site**
 
 Sites: `tests/test_console.py` (three `record_scan("scan", ...)` + the history/trend tests), `tests/test_tui.py` (two `record_scan` calls + the diff test), `tests/test_cli.py` (history test fixtures). Replace each dict-based call with a `_scan(...)` ScanResult built from the same metadatas. Add the same `_scan` helper to those modules (or import from a shared helper in a `tests/helpers.py`). Simplest: define `_build_result(...)` in each test file.
 
-- [ ] **Step 5: run the suite**
+- [x] **Step 5: run the suite**
 
 Run: `python -m pytest -q`
 Expected: PASS.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add blacklight/history.py blacklight/engine.py tests/test_history.py tests/test_console.py tests/test_tui.py tests/test_cli.py
@@ -891,7 +891,7 @@ git commit -m "feat: record_scan consumes typed ScanResult"
 - Consumes: `ScanResult` (Task 1).
 - Produces: `render_terminal(result: ScanResult, console: Console | None = None) -> None`, `export_report(result: ScanResult, fmt: str, output: Path) -> Path`.
 
-- [ ] **Step 1: write failing test**
+- [x] **Step 1: write failing test**
 
 In `tests/test_reporter.py`, replace `META` dict with a ScanResult builder and update all call sites:
 
@@ -922,12 +922,12 @@ Update each of:
 - `test_reporter_terminal_with_web_section`: `render_terminal(_web(), Console(file=out, width=160), web_findings=_web_findings(), web_meta={...})` → `render_terminal(_result(_web_findings(), web=True), Console(file=out, width=160))`
 - `export_report([...], META, "json", ...)` → `export_report(_result([_finding()]), "json", path)`
 
-- [ ] **Step 2: run to verify fail**
+- [x] **Step 2: run to verify fail**
 
 Run: `python -m pytest tests/test_reporter.py -q`
 Expected: FAIL (`TypeError` on the new signature).
 
-- [ ] **Step 3: update `reporter.py`**
+- [x] **Step 3: update `reporter.py`**
 
 ```python
 def _web_summary_text(web_findings: list[WebFinding], meta: WebMeta) -> str:
@@ -1034,12 +1034,12 @@ Better structural fix: define `ScanResult` etc. in a module that both import —
 
 Similarly `engine`'s `render_terminal(result, params.fmt ...)` calls change to the new signatures; and the `_legacy_meta` projection is deleted.
 
-- [ ] **Step 4: run suite**
+- [x] **Step 4: run suite**
 
 Run: `python -m pytest -q`
 Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add blacklight/reporter.py blacklight/engine.py tests/test_reporter.py
@@ -1062,7 +1062,7 @@ git commit -m "feat: reporter consumes typed ScanResult"
 - Consumes: `engine.run`, `engine.NetworkScan`, `engine.WebScan`, `ScanParams`
 - Produces: `cli.scan()`, `cli.web()`, `cli._console_command()`; `CommandRunner(run=...)`; `BlacklightApp(run=...)`
 
-- [ ] **Step 1: delete `web/engine.py` and fix `web/__init__.py`**
+- [x] **Step 1: delete `web/engine.py` and fix `web/__init__.py`**
 
 Delete the file; rewrite `web/__init__.py`:
 
@@ -1070,7 +1070,7 @@ Delete the file; rewrite `web/__init__.py`:
 """Web application scanning: passive, error-based checks."""
 ```
 
-- [ ] **Step 2: rewire `cli.py` to drop execute_* wrappers**
+- [x] **Step 2: rewire `cli.py` to drop execute_* wrappers**
 
 The `scan` command:
 
@@ -1132,7 +1132,7 @@ def _console_command() -> None:
 
 Delete `execute_scan`, `execute_web`, and the now-unused `history` calls of the top-of-module imports (`from black_light.web.engine import run_web_scan`, `Progress`, etc.). Keep `render_terminal`/`export_report` imports removed too (engine owns them now).
 
-- [ ] **Step 3: rewire `console.py`**
+- [x] **Step 3: rewire `console.py`**
 
 `CommandRunner`:
 
@@ -1218,7 +1218,7 @@ Add an engine-facing execute callable in `ConsoleApp`:
 
 `_confirm_plain` stays. The `_print_header` unchanged.
 
-- [ ] **Step 4: rewire TUI**
+- [x] **Step 4: rewire TUI**
 
 `blacklight/tui/app.py`:
 
@@ -1304,7 +1304,7 @@ def capture_engine_output(on_line):
 
 (`kwargs["on_progress"]` flows through `_engine_run`/orchestrator; the web path needs no on_progress — orchestrator only calls it if provided. Note `_engine_run` passes the on_progress from kwargs each run.)
 
-- [ ] **Step 5: update tests for the new seams**
+- [x] **Step 5: update tests for the new seams**
 
 `tests/test_console.py`:
 - `make_runner` → `make_runner(run=..., confirm=...)` where the fake `run(kind, targets, kwargs)` records `(kind, targets, kwargs)` and returns 0.
@@ -1321,12 +1321,12 @@ def capture_engine_output(on_line):
 
 `test_cli_web.py` and `test_cli.py`: engine now owns the seam; the typer-shell tests keep expectations (exit codes, block/abort text). Migrate the deeper `execute_scan`/`run_scan`-shape tests into `test_engine.py` orchestrator tests (already written in Task 2).
 
-- [ ] **Step 6: run the full suite**
+- [x] **Step 6: run the full suite**
 
 Run: `python -m pytest -q`
 Expected: PASS. (If any consumer still imports `blacklight.web.engine`, fix the import.)
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add blacklight/cli.py blacklight/console.py blacklight/tui blacklight/web blacklight/tui/__init__.py
@@ -1343,12 +1343,12 @@ git commit -m "refactor: single injected orchestrator for cli, console, TUI"
 - Modify: `tests/test_engine.py` (final shape), `tests/test_cli.py` (final shape), `CONTEXT.md`
 - Possibly remove dead code: `blacklight/reporter.py` no longer needs `meta`/`web_meta` dict branches (already done in Task 4); `engine.py`'s `_legacy_meta` should be gone.
 
-- [ ] **Step 1: sweep for `_legacy_meta` and dict-meta residue**
+- [x] **Step 1: sweep for `_legacy_meta` and dict-meta residue**
 
 Run: `grep -rn "_legacy_meta\|render_terminal([]\|record_scan(\"" blacklight tests`
 Expected: no matches (or fix any that remain).
 
-- [ ] **Step 2: run the suite + a real smoke scan**
+- [x] **Step 2: run the suite + a real smoke scan**
 
 Run: `python -m pytest -q`
 Expected: PASS.
@@ -1362,11 +1362,11 @@ python -m blacklight.cli web http://127.0.0.1 -o /tmp/w.md --format markdown
 
 Expected: exit 0; history records; files written.
 
-- [ ] **Step 3: update CONTEXT.md**
+- [x] **Step 3: update CONTEXT.md**
 
 Ensure the glossary names the seam: **engine.py** module, **executor adapter** (`NetworkScan`/`WebScan`), **ScanResult**, `engine.run`, `confirm`, `on_progress`. If `CONTEXT.md` refers to old kinds ("execut_scan"/`execute_web`), update them.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add CONTEXT.md tests/
