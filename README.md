@@ -63,6 +63,7 @@ Options:
 | `-p, --ports` | Port range(s) to scan. Default `1-1024` (e.g. `22,80,443`, `1-1000`, `80,443,8000-9000`). |
 | `-o, --output` | Export the report to a file (HTML by default; `.md`/`.json` suffixes switch the format automatically). |
 | `--format` | Export format: `html`, `markdown`, or `json`. Default `html`. |
+| `--no-tls-checks` | Skip TLS certificate/protocol/cipher checks (default: on). |
 | `--i-have-permission` | Confirm you are authorized to scan these targets (required for public ranges). |
 | `--no-cache` | Bypass the local NVD/EPSS cache and fetch fresh data. |
 | `--timeout` | Per-host nmap scan timeout in seconds. Default `30`. |
@@ -191,6 +192,11 @@ seconds. Set it once: `export BLACKLIGHT_NVD_KEY=your-key`
    severity-weighted base (critical=20, high=10, medium=4, low=1, capped at
    60) + 10 per KEV finding (capped at 20) + max EPSS x 10; total capped at
    100.
+   - **TLS checks** — on TLS-enabled ports, nmap's `ssl-cert` and
+     `ssl-enum-ciphers` scripts inspect certificate expiry (expired = high),
+     legacy protocols (SSLv3 = high, TLSv1.0 = medium, TLSv1.1 = low), weak
+     ciphers (NULL/EXPORT/anonymous = high; RC4/single-DES = medium), and
+     self-signed certs; findings score and report like service findings.
 5. **Report** — rich terminal table sorted by CVSS, summary panel, and
    HTML/Markdown/JSON export.
 6. **History** — every scan (network and web) is stored in
