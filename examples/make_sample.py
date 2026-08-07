@@ -3,6 +3,7 @@
 from pathlib import Path
 
 from blacklight.cve_matcher import Finding
+from blacklight.engine import NetworkMeta, ScanResult
 from blacklight.reporter import export_report
 
 SAMPLES = [
@@ -23,18 +24,20 @@ SAMPLES = [
             fixed_version="5.7.43", epss=0.01, in_kev=False),
 ]
 
-META = {
-    "targets": "192.168.1.0/24",
-    "hosts_scanned": 2,
-    "services_found": 3,
-    "findings_count": len(SAMPLES),
-    "generated": "2030-01-01T00:00:00+00:00",
-}
+GENERATED = "2030-01-01T00:00:00+00:00"
+
+
+def _result() -> ScanResult:
+    meta = NetworkMeta(targets="192.168.1.0/24", hosts_scanned=2,
+                       services_found=3, findings_count=len(SAMPLES),
+                       generated=GENERATED)
+    return ScanResult(kind="scan", target="192.168.1.0/24", generated=GENERATED,
+                      findings=SAMPLES, web_findings=[], meta=meta)
 
 
 def main() -> None:
-    export_report(SAMPLES, META, "html", Path(__file__).parent / "sample_report.html")
-    export_report(SAMPLES, META, "markdown", Path(__file__).parent / "sample_report.md")
+    export_report(_result(), "html", Path(__file__).parent / "sample_report.html")
+    export_report(_result(), "markdown", Path(__file__).parent / "sample_report.md")
 
 
 if __name__ == "__main__":

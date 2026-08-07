@@ -102,47 +102,46 @@ def web_findings_table(web_findings: list[WebFinding]) -> Table:
     return table
 
 
-def _web_summary_text(web_findings: list[WebFinding], web_meta: dict) -> str:
+def _web_summary_text(web_findings: list[WebFinding], meta) -> str:
     return (
         f"[bold {ACCENT}]blacklight-cli[/] v{__version__} - web report\n"
-        f"URL: [bold]{web_meta['url']}[/] ({web_meta['resolved_ip']}) | "
-        f"Checks run: {web_meta['checks_run']} | Checks errored: {web_meta['checks_errored']} | "
+        f"URL: [bold]{meta.url}[/] ({meta.resolved_ip}) | "
+        f"Checks run: {meta.checks_run} | Checks errored: {meta.checks_errored} | "
         f"Web findings: {len(web_findings)} | Web risk score: {web_risk_score(web_findings):.1f}"
     )
 
 
-def render_terminal(
-    findings: list[Finding],
-    meta: dict,
-    console: Console | None = None,
-    web_findings: list[WebFinding] | None = None,
-    web_meta: dict | None = None,
-) -> None:
-    """Render the rich terminal report."""
+def render_terminal(result, console: Console | None = None) -> None:
+    """Render the rich terminal report from a typed ScanResult.
+
+    ``result`` only needs the ScanResult contract (kind, findings,
+    web_findings, meta); engine is not imported here to avoid a cycle.
+    """
     console = console or theme.make_console()
-    if web_findings is not None:
+    if result.kind == "web":
         console.print(
             Panel(
-                _web_summary_text(web_findings, web_meta),
+                _web_summary_text(result.web_findings, result.meta),
                 title="Summary",
                 border_style=PURPLE,
                 title_align="center",
             )
         )
-        if web_findings:
-            console.print(web_findings_table(web_findings))
+        if result.web_findings:
+            console.print(web_findings_table(result.web_findings))
     else:
+        meta = result.meta
         console.print(
             Panel(
                 f"[bold {ACCENT}]blacklight-cli[/] v{__version__} - scan report\n"
-                f"Targets: [bold]{meta.get('targets', '')}[/] | Hosts scanned: {meta.get('hosts_scanned', 0)} | "
-                f"Services found: {meta.get('services_found', 0)} | Findings: {meta.get('findings_count', 0)}",
+                f"Targets: [bold]{meta.targets}[/] | Hosts scanned: {meta.hosts_scanned} | "
+                f"Services found: {meta.services_found} | Findings: {meta.findings_count}",
                 title="Summary",
                 border_style=PURPLE,
                 title_align="center",
             )
         )
-    hosts = host_risk_table(findings)
+    hosts = host_risk_table(result.findings)
     if hosts:
         score_table = Table(
             title="Host risk scores",
@@ -156,8 +155,8 @@ def render_terminal(
         for row in hosts:
             score_table.add_row(row["host"], risk_gauge(row["score"]), str(row["findings"]))
         console.print(score_table)
-    if findings:
-        console.print(findings_table(findings))
+    if result.findings:
+        console.print(findings_table(result.findings))
     console.print(
         Panel(
             "Risk score: severity-weighted base (capped at 60) + 10 per KEV finding "
@@ -170,22 +169,16 @@ def render_terminal(
     )
 
 
-def export_report(
-    findings: list[Finding],
-    meta: dict,
-    fmt: str,
-    output: Path,
-    web_findings: list[WebFinding] | None = None,
-    web_meta: dict | None = None,
-) -> Path:
-    """Write the report in html, markdown, or json format."""
+def export_report(result, fmt: str, output: Path) -> Path:
+    """Write the report in html, markdown, or json format from a ScanResult."""
+    meta = result.meta
     payload = {
-        "meta": meta,
-        "findings": [f.to_dict() for f in findings],
-        "hosts": host_risk_table(findings),
+        "meta": asdict(meta),
+        "findings": [f.to_dict() for f in result.findings],
+        "hosts": host_risk_table(result.findings),
         "web": (
-            {"meta": web_meta, "findings": [f.to_dict() for f in web_findings]}
-            if web_findings is not None
+            {"meta": asdict(meta), "findings": [f.to_dict() for f in result.web_findings]}
+            if result.kind == "web"
             else None
         ),
     }

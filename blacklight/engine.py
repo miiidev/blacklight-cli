@@ -267,23 +267,6 @@ def _log_result(kind: str, result: ScanResult, permission: bool) -> None:
         fh.write(line)
 
 
-def _legacy_meta(result: ScanResult) -> dict:
-    """Project a typed meta back to the old dict for record/report calls.
-
-    Temporary: removed when record_scan/reporter consume ScanResult
-    (Tasks 3 and 4).
-    """
-    if result.kind == "scan":
-        m = result.meta
-        return {"targets": m.targets, "hosts_scanned": m.hosts_scanned,
-                "services_found": m.services_found, "findings_count": m.findings_count,
-                "generated": m.generated}
-    m = result.meta
-    return {"url": m.url, "host": m.host, "resolved_ip": m.resolved_ip,
-            "checks_run": m.checks_run, "checks_errored": m.checks_errored,
-            "cve_findings": m.cve_findings, "generated": m.generated}
-
-
 def run(
     executor: ScanExecutor,
     targets: list[str],
@@ -343,18 +326,10 @@ def run(
         history.record_scan(result, params.permission_granted)
     except (OSError, sqlite3.Error) as exc:
         console.print(f"[yellow]Could not record scan history:[/] {exc}")
-    if result.kind == "web":
-        render_terminal(result.findings, _legacy_meta(result),
-                        web_findings=result.web_findings,
-                        web_meta=_legacy_meta(result), console=console)
-    else:
-        render_terminal(result.findings, _legacy_meta(result), console=console)
+    render_terminal(result, console)
     if params.output is not None:
         try:
-            export_report(result.findings, _legacy_meta(result), params.fmt,
-                          params.output,
-                          web_findings=result.web_findings or None,
-                          web_meta=_legacy_meta(result) if result.kind == "web" else None)
+            export_report(result, params.fmt, params.output)
         except (OSError, ValueError) as exc:
             console.print(f"[red]Report export failed:[/] {exc}")
             return 1

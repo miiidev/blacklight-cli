@@ -20,9 +20,31 @@ def _finding(host="192.168.1.10", cve_id="CVE-2024-12345", severity="critical",
     )
 
 
+def _result(findings=None, web=False):
+    from blacklight.engine import NetworkMeta, ScanResult, WebMeta
+
+    findings = findings or []
+    if not web:
+        return ScanResult(kind="scan", target="192.168.1.10",
+                          generated="2030-01-01T00:00:00+00:00",
+                          findings=findings, web_findings=[],
+                          meta=NetworkMeta(targets="192.168.1.10",
+                                           hosts_scanned=1,
+                                           services_found=2,
+                                           findings_count=len(findings),
+                                           generated="2030-01-01T00:00:00+00:00"))
+    return ScanResult(kind="web", target="http://example.com/",
+                      generated="2030-01-01T00:00:00+00:00", findings=[],
+                      web_findings=findings,
+                      meta=WebMeta(url="http://example.com/", host="example.com",
+                                   resolved_ip="127.0.0.1", checks_run=18,
+                                   checks_errored=0, cve_findings=0,
+                                   generated="2030-01-01T00:00:00+00:00"))
+
+
 def test_render_terminal_prints_summary():
     console = Console(record=True, width=160)
-    render_terminal([_finding()], META, console=console)
+    render_terminal(_result([_finding()]), console=console)
     text = console.export_text()
     assert "Summary" in text
     assert "CVE-2024-12345" in text
@@ -44,7 +66,7 @@ def test_host_risk_table_sorted_by_score_desc():
 
 
 def test_export_json(tmp_path):
-    out = export_report([_finding()], META, "json", tmp_path / "report.json")
+    out = export_report(_result([_finding()]), "json", tmp_path / "report.json")
     data = json.loads(out.read_text(encoding="utf-8"))
     assert data["meta"]["targets"] == "192.168.1.10"
     assert data["findings"][0]["cve_id"] == "CVE-2024-12345"
@@ -52,7 +74,7 @@ def test_export_json(tmp_path):
 
 
 def test_export_html_escapes_and_renders(tmp_path):
-    out = export_report([_finding()], META, "html", tmp_path / "report.html")
+    out = export_report(_result([_finding()]), "html", tmp_path / "report.html")
     html = out.read_text(encoding="utf-8")
     assert "&lt;vuln&gt;" in html
     assert "CVE-2024-12345" in html
@@ -60,7 +82,7 @@ def test_export_html_escapes_and_renders(tmp_path):
 
 
 def test_export_markdown(tmp_path):
-    out = export_report([_finding()], META, "markdown", tmp_path / "report.md")
+    out = export_report(_result([_finding()]), "markdown", tmp_path / "report.md")
     md = out.read_text(encoding="utf-8")
     assert "| CVE |" in md
     assert "CVE-2024-12345" in md
@@ -68,7 +90,7 @@ def test_export_markdown(tmp_path):
 
 def test_export_unknown_format_raises(tmp_path):
     with pytest.raises(ValueError):
-        export_report([], META, "pdf", tmp_path / "report.pdf")
+        export_report(_result([]), "pdf", tmp_path / "report.pdf")
 
 
 from blacklight.reporter import web_findings_table
@@ -95,10 +117,7 @@ def test_render_terminal_with_web_section():
     import io
     from rich.console import Console
     out = io.StringIO()
-    render_terminal([], {}, Console(file=out, width=160), web_findings=_web_findings(),
-                    web_meta={"url": "http://example.com/", "checks_run": 18,
-                              "checks_errored": 0, "resolved_ip": "127.0.0.1",
-                              "host": "example.com", "cve_findings": 0})
+    render_terminal(_result(_web_findings(), web=True), Console(file=out, width=160))
     text = out.getvalue()
     assert "web report" in text
     assert "Checks run: 18" in text
@@ -110,21 +129,20 @@ def test_render_terminal_without_web_section_unaffected():
     import io
     from rich.console import Console
     out = io.StringIO()
-    render_terminal([], {"targets": "192.168.1.10", "hosts_scanned": 0,
-                         "services_found": 0, "findings_count": 0}, Console(file=out))
+    render_terminal(_result([]), Console(file=out))
     text = out.getvalue()
     assert "Web risk score" not in text
 
 
 def test_render_terminal_has_footer():
     console = Console(record=True, width=160)
-    render_terminal([_finding()], META, console=console)
+    render_terminal(_result([_finding()]), console=console)
     assert "Scan complete" in console.export_text()
 
 
 def test_render_terminal_risk_gauge_in_score_table():
     console = Console(record=True, width=160)
-    render_terminal([_finding()], META, console=console)
+    render_terminal(_result([_finding()]), console=console)
     text = console.export_text()
     assert "░" in text
     assert "█" in text
