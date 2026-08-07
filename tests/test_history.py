@@ -15,6 +15,7 @@ from blacklight.history import (
     render_trend,
     trend_for_target,
 )
+from blacklight.tls import TlsFinding
 from blacklight.web.models import WebFinding
 
 NET_META = {
@@ -359,3 +360,52 @@ def test_render_trend_shows_gauge_and_scores(capsys):
     assert "Risk trend for 192.168.1.10" in out
     assert "9.0" in out
     assert "0.0" in out
+
+
+def _tls_result():
+    from blacklight.engine import NetworkMeta, ScanResult
+
+    meta = NetworkMeta(targets="192.168.1.10", hosts_scanned=1, services_found=1,
+                       findings_count=0, tls_findings_count=1,
+                       generated="2026-08-04T10:00:00+00:00")
+    return ScanResult(
+        kind="scan", target="192.168.1.10", generated="2026-08-04T10:00:00+00:00",
+        findings=[], web_findings=[], meta=meta,
+        tls_findings=[TlsFinding(host="192.168.1.10", port=443, service="https",
+                                 category="protocol", detail="supports SSLv3",
+                                 evidence="SSLv3", severity="high",
+                                 cve_id="TLS-PROTO-SSLV3")])
+
+
+def test_record_scan_stores_tls_rows():
+    record_scan(_tls_result(), False)
+    conn = sqlite3.connect(paths.HISTORY_DB)
+    rows = conn.execute(
+        "SELECT fingerprint, category, severity, cvss, epss, in_kev, cve_id"
+        " FROM findings"
+    ).fetchall()
+    conn.close()
+    assert len(rows) == 1
+    fingerprint, category, severity, cvss, epss, in_kev, cve_id = rows[0]
+    assert fingerprint == "192.168.1.10|443|https|TLS-PROTO-SSLV3"
+    assert category == "tls"
+    assert severity == "high"
+    assert cvss is None
+    assert epss == 0.0
+    assert in_kev == 0
+
+
+def test_tls_rows_feed_diff_and_score():
+    baseline = _scan_result("scan", "192.168.1.10", "2026-08-03T10:00:00+00:00", [],
+                            services=1)
+    record_scan(baseline, False)
+    later = _tls_result()
+    later.generated = "2026-08-04T11:00:00+00:00"
+    later.meta.generated = "2026-08-04T11:00:00+00:00"
+    record_scan(later, False)
+    diff = diff_for_target("192.168.1.10")
+    assert diff is not None and diff.new
+    tls_new = [f for f in diff.new if f.category == "tls"]
+    assert len(tls_new) == 1
+    assert tls_new[0].severity == "high"
+    assert diff.score_after > diff.score_before

@@ -137,6 +137,20 @@ def record_scan(result, permission: bool) -> None:
                 " epss, in_kev) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 values,
             )
+        for tls_finding in getattr(result, "tls_findings", []):
+            fingerprint = (
+                f"{tls_finding.host}|{tls_finding.port}|{tls_finding.service}|"
+                f"{tls_finding.cve_id}"
+            )
+            conn.execute(
+                "INSERT INTO findings (scan_id, kind, fingerprint, host, port,"
+                " service, cve_id, category, detail, evidence, severity, cvss,"
+                " epss, in_kev) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (scan_id, "scan", fingerprint, tls_finding.host, tls_finding.port,
+                 tls_finding.service or "", tls_finding.cve_id, "tls",
+                 tls_finding.detail, tls_finding.evidence, tls_finding.severity,
+                 None, tls_finding.epss or 0.0, 1 if tls_finding.in_kev else 0),
+            )
         conn.commit()
     finally:
         conn.close()
