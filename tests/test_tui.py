@@ -20,6 +20,7 @@ def test_tui_launches_and_quits():
     async def scenario():
         async with app.run_test() as pilot:
             await pilot.pause()
+            await dismiss_splash(pilot)
             assert app.runner is not None
             await pilot.press("q")
 
@@ -32,6 +33,7 @@ def test_tui_lists_modules_and_activates_scan():
     async def scenario():
         async with app.run_test() as pilot:
             await pilot.pause()
+            await dismiss_splash(pilot)
             from textual.widgets import DataTable
             table = app.screen.query_one("#options", DataTable)
             assert table.row_count == 0
@@ -50,6 +52,7 @@ def test_tui_edits_option_value():
     async def scenario():
         async with app.run_test() as pilot:
             await pilot.pause()
+            await dismiss_splash(pilot)
             await pilot.press("enter")  # activate scan
             await pilot.pause()
             from textual.widgets import DataTable
@@ -77,6 +80,7 @@ def test_tui_run_invokes_run_with_args():
     async def scenario():
         async with app.run_test() as pilot:
             await pilot.pause()
+            await dismiss_splash(pilot)
             await pilot.press("enter")  # activate scan
             await pilot.pause()
             from textual.widgets import DataTable
@@ -111,6 +115,7 @@ def test_tui_run_captures_engine_console(capsys):
     async def scenario():
         async with app.run_test() as pilot:
             await pilot.pause()
+            await dismiss_splash(pilot)
             await pilot.press("enter")  # activate scan
             await pilot.pause()
             from textual.widgets import DataTable
@@ -147,6 +152,7 @@ def test_tui_run_progress_bar_tracks_engine():
     async def scenario():
         async with app.run_test() as pilot:
             await pilot.pause()
+            await dismiss_splash(pilot)
             await pilot.press("enter")  # activate scan
             await pilot.pause()
             from textual.widgets import DataTable
@@ -181,6 +187,7 @@ def test_tui_run_progress_bar_determinate_during_run():
     async def scenario():
         async with app.run_test() as pilot:
             await pilot.pause()
+            await dismiss_splash(pilot)
             await pilot.press("enter")  # activate scan
             await pilot.pause()
             from textual.widgets import DataTable
@@ -331,6 +338,7 @@ def test_tui_history_screen_lists_scans(monkeypatch, tmp_path):
     async def scenario():
         async with app.run_test() as pilot:
             await pilot.pause()
+            await dismiss_splash(pilot)
             await pilot.press("h")
             await pilot.pause()
             from textual.widgets import DataTable
@@ -357,6 +365,7 @@ def test_tui_history_enter_shows_diff(monkeypatch, tmp_path):
     async def scenario():
         async with app.run_test() as pilot:
             await pilot.pause()
+            await dismiss_splash(pilot)
             await pilot.press("h")
             await pilot.pause()
             await pilot.press("enter")
@@ -364,6 +373,70 @@ def test_tui_history_enter_shows_diff(monkeypatch, tmp_path):
             from textual.widgets import Label
             title = app.screen.query_one("#detail-title", Label).render()
             assert "DIFF" in str(title)
+            await pilot.press("q")
+
+    asyncio.run(scenario())
+
+
+async def dismiss_splash(pilot):
+    await pilot.press("space")
+    await pilot.pause()
+    await asyncio.sleep(0.4)  # fade-out duration; pop_screen runs on_complete
+    await pilot.pause()
+
+
+def test_splash_shown_on_launch():
+    from blacklight import __version__
+    from blacklight.tui.views import SplashScreen
+
+    app = make_app()
+
+    async def scenario():
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert isinstance(app.screen, SplashScreen)
+            banner = app.screen.query_one("#splash-banner")
+            assert "██████╗" in str(banner.render())
+            caption = app.screen.query_one("#splash-caption")
+            assert __version__ in str(caption.render())
+            await dismiss_splash(pilot)
+            await pilot.press("q")
+
+    asyncio.run(scenario())
+
+
+def test_splash_any_key_dismisses_to_main_screen():
+    from blacklight.tui.views import MainScreen
+
+    app = make_app()
+
+    async def scenario():
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await dismiss_splash(pilot)
+            from textual.widgets import DataTable
+            assert isinstance(app.screen, MainScreen)
+            assert app.screen.query_one("#options", DataTable)
+            await pilot.press("q")
+
+    asyncio.run(scenario())
+
+
+def test_splash_q_dismisses_not_quits():
+    from blacklight.tui.views import MainScreen, SplashScreen
+
+    app = make_app()
+
+    async def scenario():
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert isinstance(app.screen, SplashScreen)
+            await pilot.press("q")
+            await pilot.pause()
+            await asyncio.sleep(0.4)
+            await pilot.pause()
+            assert app.is_running
+            assert isinstance(app.screen, MainScreen)
             await pilot.press("q")
 
     asyncio.run(scenario())

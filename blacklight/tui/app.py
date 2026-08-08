@@ -7,7 +7,7 @@ from textual.app import App, ComposeResult
 
 from blacklight.console import CommandRunner
 
-from blacklight.tui.views import ConfirmModal, MainScreen
+from blacklight.tui.views import ConfirmModal, MainScreen, SplashScreen
 
 
 class ConfirmBridge:
@@ -58,6 +58,7 @@ class BlacklightApp(App):
             confirm=self._confirm or self._bridge.ask,
         )
         self.push_screen(MainScreen())
+        self.push_screen(SplashScreen())
 
     def action_quit_app(self) -> None:
         self.exit(0)

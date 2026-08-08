@@ -2,6 +2,7 @@
 
 import contextlib
 
+from textual import events
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.screen import ModalScreen, Screen
@@ -16,8 +17,10 @@ from textual.widgets import (
     ListView,
     Log,
     ProgressBar,
+    Static,
 )
 
+from blacklight import __version__, theme
 from blacklight.console import module_run_args
 
 
@@ -65,6 +68,105 @@ def capture_engine_output(on_line):
     finally:
         engine.set_console(saved)
         sink.flush()
+
+
+class SplashScreen(Screen):
+    """Startup landing screen: animated gradient banner; any key dismisses."""
+
+    CSS = """
+    SplashScreen {
+        align: center middle;
+    }
+    #splash-box {
+        width: auto;
+        height: auto;
+        align: center middle;
+    }
+    #splash-caption {
+        margin-top: 1;
+        color: $text-muted;
+        text-align: center;
+    }
+    #splash-prompt {
+        margin-top: 2;
+        color: $text-muted;
+        text-align: center;
+    }
+    """
+
+    BINDINGS = [("q", "dismiss", "Dismiss")]
+
+    SHIMMER_INTERVAL = 1 / 16
+    PHASE_STEP = 1 / 64
+    FADE_MS = 400
+    DISMISS_MS = 300
+
+    def compose(self) -> ComposeResult:
+        modules = self.app.runner.state.modules
+        caption = (
+            f"blacklight-cli v{__version__} · {len(modules)} modules loaded "
+            f"({', '.join(modules)})"
+        )
+        with Vertical(id="splash-box"):
+            yield Static(theme.gradient_text(theme.BANNER), id="splash-banner")
+            yield Label(caption, id="splash-caption")
+            yield Label("Press any key to continue", id="splash-prompt")
+
+    def on_mount(self) -> None:
+        self._phase = 0.0
+        self._dismissing = False
+        self._fade_timer = None
+        self._timer = self.set_interval(self.SHIMMER_INTERVAL, self._tick)
+        self.styles.opacity = 0.0
+        self._fade(1.0, self.FADE_MS / 1000)
+
+    def _tick(self) -> None:
+        self._phase = (self._phase + self.PHASE_STEP) % 1.0
+        banner = self.query_one("#splash-banner", Static)
+        banner.update(theme.gradient_text(theme.BANNER, phase=self._phase))
+
+    def _fade(self, target: float, duration: float, on_complete=None) -> None:
+        """Ramp styles.opacity to ``target`` over ``duration`` seconds.
+
+        Textual 8's ``animate`` cannot touch widget ``opacity`` (read-only
+        property), so the fade is stepped with an interval timer instead.
+        """
+        if self._fade_timer is not None:
+            self._fade_timer.stop()
+        start = self.styles.opacity
+        total = max(int(duration / self.SHIMMER_INTERVAL), 1)
+        done = 0
+
+        def step() -> None:
+            nonlocal done
+            done += 1
+            if done >= total:
+                self.styles.opacity = target
+                self._fade_timer.stop()
+                if on_complete is not None:
+                    on_complete()
+            else:
+                self.styles.opacity = start + (target - start) * done / total
+
+        self._fade_timer = self.set_interval(self.SHIMMER_INTERVAL, step)
+
+    def action_dismiss(self) -> None:
+        self._dismiss()
+
+    def on_key(self, event: events.Key) -> None:
+        event.stop()
+        self._dismiss()
+
+    def _dismiss(self) -> None:
+        if self._dismissing:
+            return
+        self._dismissing = True
+        self._timer.stop()
+        self._fade(
+            0.0,
+            self.DISMISS_MS / 1000,
+            on_complete=lambda: self.app.pop_screen(),
+        )
 
 
 class MainScreen(Screen):
