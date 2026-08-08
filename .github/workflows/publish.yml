@@ -36,6 +36,20 @@ jobs:
               )
               sys.exit(1)
 
+      - name: Check release tag matches version
+        run: |
+          python - <<'EOF'
+          import os, re, sys, tomllib
+          from pathlib import Path
+          ref = os.environ.get("GITHUB_REF_NAME", "")
+          version = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8-sig"))["project"]["version"]
+          if not re.fullmatch(r"\d+\.\d+\.\d+", version):
+              print(f"version {version!r} is not a plain X.Y.Z release")
+              sys.exit(1)
+          if ref != "v" + version:
+              print(f"tag {ref!r} does not match v{version}")
+              sys.exit(1)
+
       - name: Install and test
         run: |
           python -m pip install -e ".[dev]"
@@ -52,6 +66,7 @@ jobs:
           /tmp/smoke/bin/python -m pip install --quiet dist/*.whl
           /tmp/smoke/bin/blacklight version
           /tmp/smoke/bin/python -c "import blacklight, blacklight.web, blacklight.tui, blacklight.scoring; print('imports ok')"
+          /tmp/smoke/bin/python -c "from pathlib import Path; import blacklight; t = Path(blacklight.__file__).parent / 'templates'; assert (t / 'report.md.j2').exists() and (t / 'report.html.j2').exists(); print('templates ok')"
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
