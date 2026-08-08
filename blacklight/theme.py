@@ -42,19 +42,25 @@ def _lerp_hex(start: str, end: str, t: float) -> str:
     return "#{:02x}{:02x}{:02x}".format(*rgb)
 
 
-def gradient_text(text: str) -> Text:
-    """Render text with a purple-to-cyan gradient across its width."""
+def gradient_text(text: str, phase: float = 0.0) -> Text:
+    """Render text with a purple-to-cyan gradient across its width.
+
+    ``phase`` in [0, 1) shifts the start column of the gradient; values wrap
+    modulo the text width, so phase=0.0 is the default and phase=1.0 is
+    identical to phase=0.0.
+    """
     lines = text.splitlines()
     if not lines:
         return Text()
     max_width = max(len(line) for line in lines)
     out = Text()
+    width = max(max_width - 1, 1)
     for i, line in enumerate(lines):
         for col, ch in enumerate(line):
             if ch == " ":
                 out.append(" ")
             else:
-                t = col / max(max_width - 1, 1)
+                t = ((col + phase * max_width) % max_width) / width
                 out.append(ch, style=_lerp_hex(PURPLE, CYAN, t))
         if i < len(lines) - 1:
             out.append("\n")

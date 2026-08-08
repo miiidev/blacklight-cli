@@ -105,3 +105,29 @@ def test_palette_uses_tokyo_night_colors():
     assert theme.CYAN == "#7AA2F7"
     assert theme.ACCENT == "#BB9AF7"
     assert theme.DIM == "#6b7280"
+
+
+def test_gradient_text_phase_zero_is_unchanged():
+    before = theme.gradient_text(theme.BANNER)
+    after = theme.gradient_text(theme.BANNER, phase=0.0)
+    assert after.plain == before.plain
+    assert after.spans == before.spans
+
+
+def test_gradient_text_phase_shifts_colors():
+    base = theme.gradient_text(theme.BANNER)
+    shifted = theme.gradient_text(theme.BANNER, phase=0.5)
+    first_color = next(
+        s.style for s in base.spans if s.style
+    )
+    shifted_color = next(
+        s.style for s in shifted.spans if s.style
+    )
+    assert shifted_color != first_color
+
+
+def test_gradient_text_full_phase_cycle_returns_to_start():
+    start = theme.gradient_text(theme.BANNER, phase=0.0)
+    wrapped = theme.gradient_text(theme.BANNER, phase=1.0)
+    assert wrapped.plain == start.plain
+    assert wrapped.spans == start.spans
