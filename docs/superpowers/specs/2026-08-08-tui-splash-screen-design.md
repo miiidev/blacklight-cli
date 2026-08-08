@@ -96,9 +96,10 @@ paths, `cli.py`, the engine.
   key press and the main screen takes over (options table present).
 - New `test_splash_q_dismisses_not_quits`: pressing `q` on the splash lands
   on the main screen; the app is still running.
-- Existing 8 TUI driver tests: each starts with a leading keypress to clear
+- Existing 9 TUI driver tests: each starts with a leading keypress to clear
   the splash before interacting with the main screen (their assertions are
-  unchanged).
+  unchanged). `test_tui_launches_and_quits` presses `q` twice: once to
+  dismiss the splash, once to quit.
 
 ## Out of scope
 
