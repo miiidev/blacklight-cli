@@ -433,6 +433,7 @@ def test_splash_q_dismisses_not_quits():
             assert isinstance(app.screen, SplashScreen)
             await pilot.press("q")
             await pilot.pause()
+            await pilot.press("space")
             await asyncio.sleep(0.4)
             await pilot.pause()
             assert app.is_running

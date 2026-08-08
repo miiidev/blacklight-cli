@@ -116,14 +116,14 @@ class SplashScreen(Screen):
         self._phase = 0.0
         self._dismissing = False
         self._fade_timer = None
+        self._banner = self.query_one("#splash-banner", Static)
         self._timer = self.set_interval(self.SHIMMER_INTERVAL, self._tick)
         self.styles.opacity = 0.0
         self._fade(1.0, self.FADE_MS / 1000)
 
     def _tick(self) -> None:
         self._phase = (self._phase + self.PHASE_STEP) % 1.0
-        banner = self.query_one("#splash-banner", Static)
-        banner.update(theme.gradient_text(theme.BANNER, phase=self._phase))
+        self._banner.update(theme.gradient_text(theme.BANNER, phase=self._phase))
 
     def _fade(self, target: float, duration: float, on_complete=None) -> None:
         """Ramp styles.opacity to ``target`` over ``duration`` seconds.
@@ -134,7 +134,7 @@ class SplashScreen(Screen):
         if self._fade_timer is not None:
             self._fade_timer.stop()
         start = self.styles.opacity
-        total = max(int(duration / self.SHIMMER_INTERVAL), 1)
+        total = max(round(duration / self.SHIMMER_INTERVAL), 1)
         done = 0
 
         def step() -> None:
