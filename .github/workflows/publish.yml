@@ -35,6 +35,7 @@ jobs:
                   f"pyproject={pyproject['project']['version']}"
               )
               sys.exit(1)
+          EOF
 
       - name: Check release tag matches version
         run: |
@@ -49,6 +50,7 @@ jobs:
           if ref != "v" + version:
               print(f"tag {ref!r} does not match v{version}")
               sys.exit(1)
+          EOF
 
       - name: Install and test
         run: |
