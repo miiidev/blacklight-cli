@@ -1,0 +1,50 @@
+name: publish
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Check version sync
+        run: |
+          python - <<'EOF'
+          import re, sys, tomllib
+          from pathlib import Path
+          init = Path("blacklight/__init__.py").read_text()
+          m = re.search(r'__version__\s*=\s*"([^"]+)"', init)
+          pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8-sig"))
+          if not m or m.group(1) != pyproject["project"]["version"]:
+              print(
+                  f"version mismatch: __init__={m.group(1) if m else '(not found)'} "
+                  f"pyproject={pyproject['project']['version']}"
+              )
+              sys.exit(1)
+
+      - name: Install and test
+        run: |
+          python -m pip install -e ".[dev]"
+          python -m pytest --tb=short
+
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install build
+          python -m build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
