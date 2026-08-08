@@ -441,3 +441,44 @@ def test_splash_q_dismisses_not_quits():
             await pilot.press("q")
 
     asyncio.run(scenario())
+
+
+def test_splash_banner_renders_unwrapped():
+    from textual.geometry import Size
+
+    from blacklight import theme
+
+    app = make_app()
+
+    async def scenario():
+        async with app.run_test(size=(120, 30)) as pilot:
+            await pilot.pause()
+            banner = app.screen.query_one("#splash-banner")
+            assert banner.size == Size(
+                theme.BANNER_WIDTH, len(theme.BANNER.splitlines())
+            )
+            await dismiss_splash(pilot)
+            await pilot.press("q")
+
+    asyncio.run(scenario())
+
+
+def test_splash_narrow_terminal_uses_wordmark():
+    app = make_app()
+
+    async def scenario():
+        async with app.run_test(size=(40, 24)) as pilot:
+            await pilot.pause()
+            await asyncio.sleep(0.2)  # let the shimmer tick swap the banner
+            await pilot.pause()
+            banner = app.screen.query_one("#splash-banner")
+            text = str(banner.render())
+            assert "█" not in text
+            assert len(text.splitlines()) == 1
+            await pilot.press("q")
+            await pilot.pause()
+            await asyncio.sleep(0.4)
+            await pilot.pause()
+            await pilot.press("q")
+
+    asyncio.run(scenario())

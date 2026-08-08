@@ -2,6 +2,7 @@
 
 import contextlib
 
+from rich.text import Text
 from textual import events
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
@@ -73,25 +74,26 @@ def capture_engine_output(on_line):
 class SplashScreen(Screen):
     """Startup landing screen: animated gradient banner; any key dismisses."""
 
-    CSS = """
-    SplashScreen {
+    CSS = f"""
+    SplashScreen {{
         align: center middle;
-    }
-    #splash-box {
-        width: auto;
+    }}
+    #splash-box {{
+        width: {theme.BANNER_WIDTH};
+        max-width: 100%;
         height: auto;
         align: center middle;
-    }
-    #splash-caption {
+    }}
+    #splash-caption {{
         margin-top: 1;
         color: $text-muted;
         text-align: center;
-    }
-    #splash-prompt {
+    }}
+    #splash-prompt {{
         margin-top: 2;
         color: $text-muted;
         text-align: center;
-    }
+    }}
     """
 
     BINDINGS = [("q", "dismiss", "Dismiss")]
@@ -117,13 +119,19 @@ class SplashScreen(Screen):
         self._dismissing = False
         self._fade_timer = None
         self._banner = self.query_one("#splash-banner", Static)
+        self._banner.update(self._banner_renderable())
         self._timer = self.set_interval(self.SHIMMER_INTERVAL, self._tick)
         self.styles.opacity = 0.0
         self._fade(1.0, self.FADE_MS / 1000)
 
+    def _banner_renderable(self):
+        if self.size.width >= theme.BANNER_WIDTH:
+            return theme.gradient_text(theme.BANNER, phase=self._phase)
+        return Text("blacklight-cli", style=theme.ACCENT)
+
     def _tick(self) -> None:
         self._phase = (self._phase + self.PHASE_STEP) % 1.0
-        self._banner.update(theme.gradient_text(theme.BANNER, phase=self._phase))
+        self._banner.update(self._banner_renderable())
 
     def _fade(self, target: float, duration: float, on_complete=None) -> None:
         """Ramp styles.opacity to ``target`` over ``duration`` seconds.
