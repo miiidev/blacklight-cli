@@ -46,5 +46,12 @@ jobs:
           python -m pip install build
           python -m build
 
+      - name: Smoke-test the built wheel
+        run: |
+          python -m venv /tmp/smoke
+          /tmp/smoke/bin/python -m pip install --quiet dist/*.whl
+          /tmp/smoke/bin/blacklight version
+          /tmp/smoke/bin/python -c "import blacklight, blacklight.web, blacklight.tui, blacklight.scoring; print('imports ok')"
+
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
