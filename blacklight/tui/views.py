@@ -98,8 +98,9 @@ class SplashScreen(Screen):
 
     BINDINGS = [("q", "dismiss", "Dismiss")]
 
-    SHIMMER_INTERVAL = 1 / 16
-    PHASE_STEP = 1 / 64
+    SHIMMER_INTERVAL = 1 / 30
+    PHASE_STEP = 1 / 128
+    FADE_INTERVAL = 1 / 60
     FADE_MS = 400
     DISMISS_MS = 300
 
@@ -133,16 +134,23 @@ class SplashScreen(Screen):
         self._phase = (self._phase + self.PHASE_STEP) % 1.0
         self._banner.update(self._banner_renderable())
 
+    @staticmethod
+    def _ease(t: float) -> float:
+        """Ease-in-out cubic; smooths the start/end of a fade vs. linear."""
+        return 4 * t * t * t if t < 0.5 else 1 - pow(-2 * t + 2, 3) / 2
+
     def _fade(self, target: float, duration: float, on_complete=None) -> None:
         """Ramp styles.opacity to ``target`` over ``duration`` seconds.
 
         Textual 8's ``animate`` cannot touch widget ``opacity`` (read-only
         property), so the fade is stepped with an interval timer instead.
+        Runs on its own fast interval (independent of the shimmer's cadence)
+        and eases in/out so the ramp doesn't look mechanical.
         """
         if self._fade_timer is not None:
             self._fade_timer.stop()
         start = self.styles.opacity
-        total = max(round(duration / self.SHIMMER_INTERVAL), 1)
+        total = max(round(duration / self.FADE_INTERVAL), 1)
         done = 0
 
         def step() -> None:
@@ -154,9 +162,10 @@ class SplashScreen(Screen):
                 if on_complete is not None:
                     on_complete()
             else:
-                self.styles.opacity = start + (target - start) * done / total
+                eased = self._ease(done / total)
+                self.styles.opacity = start + (target - start) * eased
 
-        self._fade_timer = self.set_interval(self.SHIMMER_INTERVAL, step)
+        self._fade_timer = self.set_interval(self.FADE_INTERVAL, step)
 
     def action_dismiss(self) -> None:
         self._dismiss()

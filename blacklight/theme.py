@@ -1,5 +1,6 @@
 """Visual identity for blacklight-cli: banner art, colors, and gauges."""
 
+import math
 import os
 from collections import ChainMap
 
@@ -48,19 +49,26 @@ def gradient_text(text: str, phase: float = 0.0) -> Text:
     ``phase`` in [0, 1) shifts the start column of the gradient; values wrap
     modulo the text width, so phase=0.0 is the default and phase=1.0 is
     identical to phase=0.0.
+
+    Color position follows a cosine wave (purple -> cyan -> purple) rather
+    than a linear sawtooth. A sawtooth hits t=1 (full cyan) then instantly
+    resets to t=0 (full purple) as phase advances, which reads as a visible
+    "seam" snapping across the banner each cycle. The cosine wave has no
+    such discontinuity — in value or in slope — so the shimmer loops
+    seamlessly.
     """
     lines = text.splitlines()
     if not lines:
         return Text()
     max_width = max(len(line) for line in lines)
     out = Text()
-    width = max(max_width - 1, 1)
     for i, line in enumerate(lines):
         for col, ch in enumerate(line):
             if ch == " ":
                 out.append(" ")
             else:
-                t = ((col + phase * max_width) % max_width) / width
+                raw_t = ((col + phase * max_width) % max_width) / max_width
+                t = 0.5 - 0.5 * math.cos(2 * math.pi * raw_t)
                 out.append(ch, style=_lerp_hex(PURPLE, CYAN, t))
         if i < len(lines) - 1:
             out.append("\n")
