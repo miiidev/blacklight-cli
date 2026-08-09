@@ -146,8 +146,9 @@ the CLI. Launch `blacklight console` and press any key to dismiss the
 animated splash banner:
 
 <p align="center">
-  <img src="docs/scan.png" alt="blacklight console TUI - scan module" width="420">
-  <img src="docs/web.png" alt="blacklight console TUI - web module" width="420">
+  <a href="docs/scan.png"><img src="docs/scan.png" alt="blacklight console TUI - scan module" width="720"></a>
+  <br>
+  <a href="docs/web.png"><img src="docs/web.png" alt="blacklight console TUI - web module" width="720"></a>
 </p>
 
 - **Main screen** — pick a module (`scan` / `web`) with `up`/`down` +
