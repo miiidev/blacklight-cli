@@ -141,35 +141,48 @@ messages; `1` for a corrupt history database or a bad `--since` value.
 
 ### Interactive console — `blacklight console`
 
-An msfconsole-style session with the same functionality as the CLI:
+A full-screen Terminal User Interface (TUI) with the same functionality as
+the CLI. Launch `blacklight console` and press any key to dismiss the
+animated splash banner:
 
-```text
-blacklight > help
-blacklight > use scan
-blacklight (scan) > set TARGET 192.168.1.10
-blacklight (scan) > set PORTS 22,80,443
-blacklight (scan) > run
-blacklight (scan) > history              list recent scans
-blacklight (scan) > history 192.168.1.10 diff that target
-blacklight (scan) > trend 192.168.1.10   risk-score trend
-blacklight (scan) > back
-blacklight > exit
-```
+<p align="center">
+  <img src="docs/scan.png" alt="blacklight console TUI - scan module" width="420">
+  <img src="docs/web.png" alt="blacklight console TUI - web module" width="420">
+</p>
 
-Commands: `help`, `modules`, `use <module>`, `show options`,
-`set <OPTION> <value>`, `unset <OPTION>`, `run`, `back`, `history`,
-`history <target>`, `trend <target>`, `exit` / `quit`. Command names
-tab-complete. `history` and `trend` are available without selecting a module.
+- **Main screen** — pick a module (`scan` / `web`) with `up`/`down` +
+  `enter`, then edit its options in the table (`enter` opens an input
+  prompt, `esc` cancels). `r` runs the active module, `h` opens scan
+  history, `q` quits.
+- **Run screen** — live progress bar and log stream while the scan runs,
+  then a navigable findings table (host, port, service, CVE, severity,
+  EPSS, KEV). `esc` returns to the main screen.
+- **History screen** — the most recent scans; `enter` on a row shows the
+  diff for that target, `t` shows its risk-score trend, `esc` goes back.
+- **Authorization** — public-target permission prompts appear as a
+  Yes/No modal (`y` / `n`).
 
 Modules and their options:
 
 | Module | Options |
 |---|---|
-| `scan` | `TARGET`, `PORTS`, `OUTPUT`, `FORMAT`, `NO_CACHE`, `TIMEOUT`, `PERMISSION` |
+| `scan` | `TARGET`, `PORTS`, `OUTPUT`, `FORMAT`, `NO_CACHE`, `NO_TLS_CHECKS`, `TIMEOUT`, `PERMISSION` |
 | `web` | `TARGET`, `TIMEOUT`, `NO_CACHE`, `OUTPUT`, `FORMAT`, `PERMISSION` |
 
 `PERMISSION` accepts `true`/`false`; set it `true` to authorize scanning
-public targets (you will still be asked to confirm interactively).
+public targets (you will still be asked to confirm in the modal).
+
+When stdin is piped (not a TTY), the console skips the TUI and reads
+REPL-style lines instead — useful for scripting:
+
+```bash
+printf 'use scan\nset TARGET 192.168.1.10\nrun\nexit\n' | blacklight console
+```
+
+Commands: `help`, `modules`, `use <module>`, `show options`,
+`set <OPTION> <value>`, `unset <OPTION>`, `run`, `back`, `history`,
+`history <target>`, `trend <target>`, `exit` / `quit`. `history` and
+`trend` are available without selecting a module.
 
 ### Version — `blacklight version`
 
