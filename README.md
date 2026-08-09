@@ -6,6 +6,10 @@ exploitation intelligence (FIRST EPSS + CISA KEV), scores every host
 0-100 by risk, and prints a severity-ranked report in the terminal with
 optional HTML/Markdown/JSON export.
 
+<p align="center">
+  <img src="docs/blacklight.gif" alt="blacklight-cli demo" width="600">
+</p>
+
 > **Warning:** use only on systems you own or are explicitly authorized to
 > test (e.g. a home lab, Metasploitable VM, or your own infrastructure).
 > Scanning networks without authorization may be illegal. Every scan is
